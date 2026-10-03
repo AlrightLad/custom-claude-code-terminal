@@ -1,0 +1,6 @@
+harness/frames/
+node_modules/
+assets/sound/*.wav
+assets/sound/*.mp3
+*.bak.*
+docs/PROBE.local.md
