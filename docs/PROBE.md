@@ -212,6 +212,109 @@ than the module layout.
 - Windows Terminal clamps `--size` to what fits on the monitor; ask for 45
   rows and you may get 40. Trust `LINES`, not what you asked for.
 
+## A.1 — glyph tiers per terminal (quality pass)
+
+`harness/glyphs.sh` prints one row per tier. Observed, both as a standalone
+window and routed through the status line (which passes the astral-plane
+sextant code points through untouched):
+
+| Tier | Code points | mintty 3.8.3 (Git Bash default font) | Windows Terminal 1.24 |
+|---|---|---|---|
+| halfblock | U+2580 U+2584 U+2588 | solid | solid |
+| quadrant | U+2596..U+259F | solid | solid |
+| sextant | U+1FB00..U+1FB3B | hollow boxes (font lacks them) | solid (built-in rasterizer) |
+| octant | U+1CD00..U+1CDE5 | hollow boxes | solid |
+
+Box drawing, the arrow set U+2190..U+2199 and the lower-block bar glyphs
+U+2581..U+2588 render in both. Consequence: the renderer auto-selects
+`sextant` when `WT_SESSION` is present and `halfblock` otherwise, and
+`CCGOLF_GLYPHS=quadrant` is the right setting for mintty users who want the
+extra horizontal resolution. The brief's premise that the status line could
+not carry these glyphs was not the problem; fonts are.
+
+## F.5 — spinner verbs cannot follow the sim
+
+Checked against the settings reference and the Claude Code changelog for
+2.1.23 onward: `spinnerVerbs` is `{ "mode": "append" | "replace", "verbs":
+[...] }`, hot-reloads with the rest of settings.json, and the verb shown is
+picked at random from the resulting list. There is no command, hook,
+environment variable, per-turn override or SDK call that supplies a verb
+dynamically, and the related `spinnerTipsOverride` setting is a static list
+too. So the spinner cannot say "Lining up the putt..." while the golfer is
+actually putting. The verbs ship as flavour, not as a status channel. If a
+dynamic source ever appears, `src/sim/golf.mjs` already knows the current
+phase and club; wiring it would be a few lines in the hooks.
+
+## Scale — why the golfer kept rendering out of proportion
+
+Three builds in a row showed the golfer too large for the course. The cause
+was not two coordinate systems: sprites have always been a fixed 4 cells by
+5 rows, and the world has one unit (yards) with one conversion, yards per
+column, computed by the camera. The failure was that conversion. The camera
+chose yards-per-column to fit either the whole hole or the fairway corridor
+into the picture, and on a wide or short picture that lands at 4 to 8 yards
+per column. A green is 20 to 34 yards across, so at 4 y/col it draws 5 to 8
+columns wide while the golfer stays 10 units tall. A fixed-size sprite next
+to a zoomed-out world is a giant.
+
+Fix: `U_MAX = 2.0` in `src/render/scene.mjs`. The smallest green (20 yards)
+is then 10 units tall, the golfer's height, and every green is at least as
+tall as he is. The camera scrolls instead of fitting. `harness/scale-check.mjs`
+renders frames at 80, 120 and 200 columns on two tiers and fails if the
+golfer is ever taller than the green's drawn diameter or less than a third
+of it; every captured replay frame carries a `dbg` row with yards-per-column,
+the golfer's cell size and the green's drawn size. A sprite that would cross
+the drawable area is clamped and the event is appended to
+`~/.claude/golf/sprite-violations.log`.
+
+## Idle — why the golfer kept playing with nobody home
+
+Instrumented hooks (`hooks.log` in the golf state directory, one line per
+event with the resolved path) show both hooks firing on every turn boundary
+on this machine, including auto mode. The problem was what they wrote and
+what the renderer did with it:
+
+- (b) The two hooks wrote one shared `state/mode` file. With two sessions
+  open, a prompt in either one marked every golfer WORKING. The hooks now
+  write `state/mode-<session_id>` from the `session_id` in their stdin JSON
+  and the renderer reads that file first.
+- (c) IDLE only selected a scene. The state machine kept advancing, and the
+  Stop transition fast-forwarded the rest of the hole. Now `advanceHole`
+  takes a `freeze` flag: the shot in flight lands, rolls out and settles,
+  then the phase becomes `stand` with an infinite duration. Resuming sets
+  `address` from the same ball. `harness/idle-check.mjs` flips WORKING ->
+  IDLE -> WORKING and asserts stroke counts and ball position.
+- Stale guard: a WORKING mark older than five minutes with no change in the
+  token and API-time counters of the status line payload for five minutes is
+  treated as IDLE. (A long turn keeps those counters moving; a dropped Stop
+  hook does not.)
+
+## Subagent lifecycle — what the hooks expose
+
+The hooks reference lists `SubagentStart` ("when a subagent is spawned")
+and `SubagentStop` ("when a subagent finishes"), with a matcher on the
+agent type (`general-purpose`, `Explore`, `Plan`, custom names). Documented
+stdin fields for every event are `session_id`, `cwd` and `hook_event_name`;
+the per-event schema for the subagent events is not published, and nothing
+documented reports a running-subagent count or identifies one subagent
+instance from another. The status line's `agent.name` is the main session's
+agent, set only with `--agent`.
+
+Captured on this machine (2.1.296) by logging the raw stdin of both events
+while a one-line subagent ran:
+
+    SubagentStart: session_id, transcript_path, cwd, scratchpad_dir, prompt_id,
+                   agent_id, agent_type, hook_event_name
+    SubagentStop:  the same, plus permission_mode, stop_hook_active,
+                   agent_transcript_path, last_assistant_message,
+                   background_tasks: [{ id, type: "subagent", status, ... }]
+
+So each subagent has a stable `agent_id` from start to stop, its `agent_type`
+is the name you would show, and the stop payload even lists the other
+background tasks still running. `SubagentStop` fired twice for one agent
+(`stop_hook_active` false, then true); dedupe on `agent_id`. That is enough
+for a per-session roster file written by the hooks and read by the renderer.
+
 ## Reproducing
 
     # point the status line at the probe (hot-reloads)

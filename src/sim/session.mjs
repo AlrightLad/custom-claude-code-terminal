@@ -1,9 +1,15 @@
 // Session-level state: the round, the scorecard, mode transitions and the
 // idle phases. Wraps the hole state machine in src/sim/golf.mjs.
+//
+// The simulation advances only while the agent is WORKING. When the agent
+// stops, the shot in the air is allowed to land, roll out and settle, and
+// then the state machine is frozen: no new swings, no hole advancement, no
+// score changes. On WORKING the golfer addresses the ball and plays on from
+// exactly where he stopped.
 import { coursePars } from '../gen/course.mjs';
-import { newHole, advanceHole, fastForward, scoreName, DUR } from './golf.mjs';
+import { newHole, advanceHole, scoreName, DUR } from './golf.mjs';
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export function newState(sid, now) {
   const pars = coursePars(sid);
@@ -37,49 +43,66 @@ function finishHole(st, now) {
   return events;
 }
 
+// Idle phases:
+//   settle   the shot in the air finishes (flight -> result), then stand
+//   stand    mid-hole: golfer at the ball, caddie beside him, frozen
+//   holeout  the final shot dropped: celebration, score recorded, then walk
+//   round    18 holes done
+//   walk     between holes, walking to the next tee
+//   wait     on the tee before the first shot of the hole
+function enterIdle(st, now) {
+  const h = st.hole;
+  st.mode = 'IDLE';
+  if (h.phase === 'swing' || h.phase === 'flight' || h.phase === 'result') st.idle = { phase: 'settle', pt: 0 };
+  else if (h.phase === 'holed' || h.holed) st.idle = { phase: 'holeout', pt: 0, pending: true };
+  else if (h.strokes === 0) st.idle = { phase: 'wait', pt: 0 };
+  else st.idle = { phase: 'stand', pt: 0 };
+  void now;
+}
+
 // Advance everything by dt ms given the hook-reported mode. Returns events
 // for the entry point (career updates).
 export function step(st, hole, mode, dt, now) {
   const events = [];
   const sid = st.sid;
-  const h = st.hole;
   if (mode === 'WORKING') {
     if (st.mode !== 'WORKING') {
       st.mode = 'WORKING';
+      const was = st.idle;
       st.idle = null;
-      h.pt = 0;
-      if (h.phase === 'holed') { events.push(...finishHole(st, now)); }
+      const h = st.hole;
+      // Resume: a finished hole moves on, a frozen golfer addresses the ball.
+      if (h.phase === 'holed' && was && was.pending) events.push(...finishHole(st, now));
+      else if (h.phase === 'stand') { h.phase = 'address'; h.pt = 0; }
+      else if (h.phase === 'holed') { /* celebration continues */ }
     }
     const cur = st.hole;
-    const ev = advanceHole(cur, hole, dt, sid, st.round);
-    void ev;
+    advanceHole(cur, hole, dt, sid, st.round, false);
     if (cur.phase === 'holed' && cur.pt >= DUR.holed) {
       events.push(...finishHole(st, now));
-      // The next hole starts on the tee; keep leftover time small so the
-      // golfer does not instantly swing.
       st.hole.pt = 0;
     }
-  } else {
-    if (st.mode !== 'IDLE') {
-      st.mode = 'IDLE';
-      if (h.phase === 'holed' || h.strokes > 0) {
-        // The agent stopped: hole out now (the Stop hook plays the putt
-        // sound at this moment), record the score, then show the walk.
-        if (!h.holed) fastForward(h, hole, sid, st.round);
-        const ev = finishHole(st, now);
-        events.push(...ev);
-        st.idle = { phase: 'holeout', pt: 0, round: ev.some(e => e.type === 'round') };
-      } else {
-        st.idle = { phase: 'wait', pt: 0 };
-      }
+    return events;
+  }
+
+  if (st.mode !== 'IDLE') enterIdle(st, now);
+  if (!st.idle) st.idle = { phase: 'wait', pt: 0 };
+  const h = st.hole;
+  const idle = st.idle;
+  idle.pt += dt;
+  if (idle.phase === 'settle') {
+    // Let the current shot land and roll out; freeze before the next swing.
+    advanceHole(h, hole, dt, sid, st.round, true);
+    if (h.phase === 'holed') st.idle = { phase: 'holeout', pt: 0, pending: true };
+    else if (h.phase === 'stand') st.idle = { phase: 'stand', pt: 0 };
+  } else if (idle.phase === 'holeout') {
+    if (idle.pt >= DUR.holed) {
+      const ev = finishHole(st, now);
+      events.push(...ev);
+      st.idle = { phase: ev.some(e => e.type === 'round') ? 'round' : 'walk', pt: 0 };
     }
-    if (!st.idle) st.idle = { phase: 'wait', pt: 0 };
-    st.idle.pt += dt;
-    if (st.idle.phase === 'holeout' && st.idle.pt >= DUR.holed) {
-      st.idle = { phase: st.idle.round ? 'round' : 'walk', pt: 0 };
-    } else if (st.idle.phase === 'round' && st.idle.pt >= DUR.round) {
-      st.idle = { phase: 'walk', pt: 0 };
-    }
+  } else if (idle.phase === 'round' && idle.pt >= DUR.round) {
+    st.idle = { phase: 'walk', pt: 0 };
   }
   return events;
 }

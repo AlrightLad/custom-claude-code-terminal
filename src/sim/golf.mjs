@@ -238,6 +238,7 @@ export function takeShot(h, hole, sid, round) {
 }
 
 export function phaseDuration(h) {
+  if (h.phase === 'stand') return Infinity;
   if (h.phase === 'flight') return h.shots.length ? h.shots[h.shots.length - 1].dur : 1500;
   if (h.phase === 'result') {
     const s = h.shots[h.shots.length - 1];
@@ -246,18 +247,23 @@ export function phaseDuration(h) {
   return DUR[h.phase] || 1500;
 }
 
-// Advance the hole state machine by dt milliseconds. Returns a list of
-// events ('shot', 'holed'). The ball position in `h` only changes when the
-// flight phase completes, so a frame during flight interpolates along the
-// trace instead (see ballDisplay).
-export function advanceHole(h, hole, dt, sid, round) {
+// Advance the hole state machine by dt milliseconds. The ball position in
+// `h` only changes when the flight phase completes, so a frame during flight
+// interpolates along the trace instead (see ballDisplay).
+//
+// freeze=true (the agent is idle): the shot in progress lands and rolls out,
+// but no new swing starts; the golfer ends in the 'stand' phase, frozen.
+export function advanceHole(h, hole, dt, sid, round, freeze = false) {
   const events = [];
+  if (h.phase === 'stand') return events;
   h.pt += dt;
   for (let guard = 0; guard < 8; guard++) {
     if (h.holed && h.phase === 'holed') { h.pt = Math.min(h.pt, DUR.holed); break; }
+    if (h.phase === 'stand') break;
     const dur = phaseDuration(h);
     if (h.pt < dur) break;
     h.pt -= dur;
+    if (freeze && (h.phase === 'tee' || h.phase === 'walk' || h.phase === 'address')) { h.phase = 'stand'; h.pt = 0; break; }
     switch (h.phase) {
       case 'tee': h.phase = 'address'; break;
       case 'walk': h.phase = 'address'; break;
@@ -280,7 +286,12 @@ export function advanceHole(h, hole, dt, sid, round) {
         else {
           const moved = s ? Math.hypot(s.end.x - s.from.x, s.end.y - s.from.y) : 0;
           h.phase = moved > 4 ? 'walk' : 'address';
+          if (freeze && h.phase === 'address') { h.phase = 'stand'; h.pt = 0; }
         }
+        break;
+      }
+      case 'swing': {
+        // unreachable here (handled above); kept for clarity
         break;
       }
       default: h.phase = 'address';
