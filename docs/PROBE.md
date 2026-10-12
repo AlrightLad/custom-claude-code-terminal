@@ -319,10 +319,18 @@ for a per-session roster file written by the hooks and read by the renderer.
 
 This is the keystone finding: the host, not the encoding, is the constraint.
 
-Claude Code does not pass the status line command's stdout to the terminal.
-It runs a full VT tokenizer over it and re-renders the result inside its own
-TUI cell grid. The tokenizer is in the binary (confirmed in 2.1.288 and again
-in 2.1.296 after a mid-session auto-update):
+Scope: this is behaviour observed by inspecting the shipped binary and testing
+the live status line, **confirmed on versions 2.1.288 and 2.1.296, verified
+2026-10-12**. It is an implementation detail, not a documented contract, and
+could change on any release. Re-confirm it against a new version by pointing a
+session's `statusLine` at `harness/escprobe.mjs` and running the matrix below
+(the steering file and classes are documented in that script's header); if a
+future build forwards a class it does not today, the ceiling changes.
+
+As observed on those versions, Claude Code does not pass the status line
+command's stdout to the terminal. It runs a full VT tokenizer over it and
+re-renders the result inside its own TUI cell grid. The tokenizer is in the
+binary:
 
     wZ = { CSI:91, OSC:93, DCS:80, APC:95, PM:94, SOS:88, ST:92 }
     ... f.state = "csi" | "osc" | "dcs" | "apc" | "pm" | "sos" | "ss3" ...
