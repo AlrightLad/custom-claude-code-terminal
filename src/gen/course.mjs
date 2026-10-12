@@ -226,6 +226,7 @@ export function genCaddie(sid) {
   let name = pick(rnd, CONS) + pick(rnd, VOW);
   if (rnd() < 0.6) name += pick(rnd, CONS) + pick(rnd, VOW);
   if (rnd() < 0.4) name += pick(rnd, ['n', 's', 'l', 't', 'r']);
+  if (name.length < 3) name += pick(rnd, CONS) + pick(rnd, VOW); // "Se" reads like a typo
   name = name[0].toUpperCase() + name.slice(1);
   // Shirts, pants and bag are kept distinct from each other so the figures
   // never collapse into a single-colour blob at sprite scale.

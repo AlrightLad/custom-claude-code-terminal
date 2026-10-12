@@ -186,8 +186,13 @@ the status line timing so the script's overhead is visible separately from
 machine load. The 100 ms p99 gate holds when `node -e 0` itself is under
 about 80 ms p99, which is the quiet-machine case, and cannot hold otherwise.
 
-Things tried that did not help: `NODE_COMPILE_CACHE` (no change), fewer
-modules below about six (within noise).
+Things tried that did not help: `NODE_COMPILE_CACHE` (reading the cache
+files cost more than compiling 2,500 lines; median got slower), fewer
+modules below about six (within noise). An "imports only" script that loads
+every module and exits costs the same as a full frame, so the remaining
+overhead is module loading, not rendering; a single-file bundle would save
+an estimated 10–15 ms and is the next step if the budget ever matters more
+than the module layout.
 
 ## Other facts worth keeping
 
