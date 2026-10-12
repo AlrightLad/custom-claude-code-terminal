@@ -1,0 +1,30 @@
+{
+  "name": "nes16",
+  "notes": "Sixteen entries, NES-era saturation. Index is what the rasterizer stores per pixel; roles map game concepts to indices so the art can be retuned here without touching code.",
+  "colors": [
+    { "i": 0,  "name": "black",      "hex": "#0b0b0b" },
+    { "i": 1,  "name": "tree",       "hex": "#1d4a1f" },
+    { "i": 2,  "name": "rough",      "hex": "#2f6b2a" },
+    { "i": 3,  "name": "fairway",    "hex": "#4f9a3b" },
+    { "i": 4,  "name": "green",      "hex": "#8fd05a" },
+    { "i": 5,  "name": "fringe",     "hex": "#6fb84a" },
+    { "i": 6,  "name": "sand",       "hex": "#e8d59a" },
+    { "i": 7,  "name": "water",      "hex": "#2d5fd0" },
+    { "i": 8,  "name": "waterLight", "hex": "#6aa8ff" },
+    { "i": 9,  "name": "white",      "hex": "#f4f4f4" },
+    { "i": 10, "name": "red",        "hex": "#d8313a" },
+    { "i": 11, "name": "skin",       "hex": "#f0c8a0" },
+    { "i": 12, "name": "yellow",     "hex": "#f8d84a" },
+    { "i": 13, "name": "gray",       "hex": "#9a9a9a" },
+    { "i": 14, "name": "navy",       "hex": "#26338f" },
+    { "i": 15, "name": "brown",      "hex": "#7a4a1e" }
+  ],
+  "roles": {
+    "sky": 0, "outline": 0, "cup": 0,
+    "tree": 1, "rough": 2, "fairway": 3, "green": 4, "fringe": 5, "tee": 5,
+    "sand": 6, "water": 7, "waterLight": 8,
+    "ball": 9, "pole": 9, "stake": 9, "text": 9,
+    "flag": 10, "skin": 11, "traceNow": 12, "traceOld": 13, "club": 13, "textDim": 13,
+    "pants": 14, "trunk": 15, "bag": 15
+  }
+}
