@@ -160,6 +160,35 @@ on status line colours.
 Design consequence: 24-bit SGR by default. `GOLF_COLOR=256` forces the
 256-colour fallback for terminals that need it.
 
+## P0.7 — Node startup, measured while building
+
+The brief's budget (40 ms mean, 100 ms p99 per frame) turned out to be set
+by Node itself, not by the renderer. Interleaved spawn timings on the
+development laptop (13th-gen mobile i7, other applications running):
+
+| Variant | min | median | p90 | p99 |
+|---|---|---|---|---|
+| `node -e 0` | 77 | 91 | 95 | 101 |
+| one `.mjs` file, no imports | 93 | 103 | 118 | 132 |
+| entry + 3 ESM modules | 94 | 105 | 124 | 135 |
+| entry + 12 ESM modules | 99 | 114 | 138 | 144 |
+| entry + 12 CommonJS modules | 97 | 110 | 117 | 157 |
+
+Milliseconds. The same `node -e 0` measured 35/46/66 ms (min/median/p90)
+earlier in the day on an idle machine, so absolute numbers move with load by
+a factor of two; the differences between rows are the stable part: the ESM
+loader costs about 10 ms to start plus about 1 ms per module.
+
+The renderer's own work, measured inside the process with `GOLF_TRACE=1`,
+is 9–13 ms for a full working frame (state 2, generator 1, sim 1, scene 4,
+cells 2, save 2). `harness/perf.sh` now prints a bare-node baseline next to
+the status line timing so the script's overhead is visible separately from
+machine load. The 100 ms p99 gate holds when `node -e 0` itself is under
+about 80 ms p99, which is the quiet-machine case, and cannot hold otherwise.
+
+Things tried that did not help: `NODE_COMPILE_CACHE` (no change), fewer
+modules below about six (within noise).
+
 ## Other facts worth keeping
 
 - Edits to `settings.json` hot-reload. Changing the `command` re-runs it

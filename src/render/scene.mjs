@@ -189,7 +189,7 @@ function renderWorking(ctx) {
     // they would not both fit with room for the golfer sprite around the ball.
     const ball = ballDisplay(h);
     const cx = (ball.x + hole.pin.x) / 2, cy = (ball.y + hole.pin.y) / 2 - 1.5;
-    const need = Math.max(1, Math.abs(ball.x - hole.pin.x) / Math.max(8, W - 14), Math.abs(ball.y - hole.pin.y) / Math.max(4, H - 7));
+    const need = Math.max(1, Math.abs(ball.x - hole.pin.x) / Math.max(8, W - 14), Math.abs(ball.y - hole.pin.y) / Math.max(4, H - 8));
     const scale = need;
     const halfW = W * scale / 2, halfH = H * scale / 2;
     m = makeMap(W, H, { minX: cx - halfW, maxX: cx + halfW, minY: cy - halfH, maxY: cy + halfH });
@@ -307,7 +307,8 @@ function renderIdle(ctx) {
   let line2, line3;
   if (idle.phase === 'holeout' && st.last) {
     line2 = `${scoreName(st.last.par, st.last.strokes)} ${st.last.strokes} on the par ${st.last.par} ${ordinal(st.last.no)}`;
-    line3 = `${cad.name}: ${quip(sid, st.last.no, st.last.strokes, st.last.strokes <= st.last.par ? 'holed' : 'lip')}`;
+    const over = st.last.strokes - st.last.par;
+    line3 = `${cad.name}: ${quip(sid, st.last.no, st.last.strokes, over <= 0 ? 'holed' : over === 1 ? 'bogey' : 'bad')}`;
   } else if (idle.phase === 'round' && st.lastRound) {
     line2 = `Round ${st.lastRound.round} complete: ${st.lastRound.total} (${toParText(st.lastRound.toPar)})`;
     line3 = `${cad.name}: ${quip(sid, 0, st.lastRound.total, 'walk')}`;

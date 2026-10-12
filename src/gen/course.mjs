@@ -260,6 +260,8 @@ const QUIPS = {
   short: ['Came up short.', 'One more club next time.', 'Chip and a putt.', 'Just off the front.'],
   holed: ['In the hole!', 'Centre cup.', 'Never in doubt.', 'That is the sound we like.'],
   lip: ['Lipped out!', 'Robbed.', 'How did that stay out?', 'Burned the edge.'],
+  bogey: ['Bogey. It happens.', 'Tap-in bogey, moving on.', 'One over. Fine.', 'The card can take it.'],
+  bad: ['We move on.', 'That one hurt.', 'Forget it. Next tee.', 'Still a nice walk.', 'I have seen worse. Once.'],
   walk: ['Nice day for it.', 'Next tee is just up here.', 'Water? Snack?', 'Keep the tempo, boss.', 'Weather is holding.'],
   cart: ['Hold on.', 'Cart path only today.', 'Easy on the corners.', 'Next tee, two minutes.'],
   wait: ['Whenever you are ready.', 'Take your time.', 'Group ahead is slow.', 'Stretch it out.'],
