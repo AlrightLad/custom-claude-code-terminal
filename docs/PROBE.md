@@ -315,6 +315,104 @@ background tasks still running. `SubagentStop` fired twice for one agent
 (`stop_hook_active` false, then true); dedupe on `agent_id`. That is enough
 for a per-session roster file written by the hooks and read by the renderer.
 
+## Phase H.1 — what Claude Code does to status line stdout (root cause)
+
+This is the keystone finding: the host, not the encoding, is the constraint.
+
+Claude Code does not pass the status line command's stdout to the terminal.
+It runs a full VT tokenizer over it and re-renders the result inside its own
+TUI cell grid. The tokenizer is in the binary (confirmed in 2.1.288 and again
+in 2.1.296 after a mid-session auto-update):
+
+    wZ = { CSI:91, OSC:93, DCS:80, APC:95, PM:94, SOS:88, ST:92 }
+    ... f.state = "csi" | "osc" | "dcs" | "apc" | "pm" | "sos" | "ss3" ...
+
+and a truncation-repair regex that explicitly knows the OSC/DCS/SOS/PM/APC
+introducers:
+
+    /\x1b(?:[\]PX^_][^\x1b\x07]*\x1b?|\[[\x30-\x3f]*[\x20-\x2f]*)$/
+
+So every escape class is parsed, not forwarded. What survives the round trip,
+tested class by class with `harness/escprobe.mjs` (point a session's
+statusLine at it, steer with `~/.claude/golf/escprobe.json`):
+
+| Class | Example | Survives? | How observed |
+|---|---|---|---|
+| SGR (CSI m) | `\e[38;2;r;g;bm` | YES, re-rendered | colour shows in every frame |
+| OSC 8 hyperlink | `\e]8;;url\e\\` | YES (special-cased, `V="\x1B]8;;\x1B\\"`) | documented; code path present |
+| OSC 0/2 set title | `\e]0;TITLE\a` | NO | window title never changed (read via the OS, not a screenshot) |
+| DCS / Sixel | `\ePq...\e\\` | NO | no image; the trailing text renders, the DCS is gone (also P0.4) |
+| APC / Kitty graphics | `\e_G...\e\\` | NO | no image; trailing text renders |
+| CSI cursor motion / ED / EL | `\e[2J`, `\e[5A` | NO (consumed) | TUI not disturbed; no leak |
+| DECSET private modes | `\e[?25l` | NO | host cursor unaffected |
+| C1 8-bit controls | `0x9b`, `0x90` | NO (stripped) | a separate sanitizer maps `\u0000-\u001f\u007f-\u009f` to `?` |
+
+The OSC set-title test is the cleanest: a status line that emits
+`\e]0;CCGOLF-OSC-n\a` left the Windows Terminal title unchanged across
+several values, so even OSC that a terminal would act on does not reach it.
+Only SGR colour and OSC 8 links cross the boundary, which is exactly what the
+docs promise and nothing more.
+
+### H.2 — does any passthrough class carry pixels? No.
+
+The only non-text classes preserved are SGR (colour) and OSC 8 (a link on
+text). Neither carries a bitmap. DCS (Sixel) and APC (the Kitty graphics
+protocol) are the only pixel carriers in any terminal, and both are tokenized
+and dropped. There is no passthrough channel to exploit.
+
+### H.3 / G'.4 — the honest conclusion
+
+Half-block / quadrant / sextant cell art in 24-bit colour **is** the product.
+There is no technical lever left that raises the ceiling above two colours per
+cell from inside the status line, because the host re-renders captured output
+as cells by design, and any protocol anyone invents hits the same tokenizer.
+Effort now goes into craft: better sprites, one consistent light direction,
+flat-colour discipline, animation easing, and the row budget below. A draft
+upstream feature request (opt-in graphics passthrough with reserved rows) is
+kept in `docs/feature-request-statusline-graphics.md` for review before it is
+ever filed; it is not filed.
+
+### G'.3 — terminal capability probe
+
+`harness/termprobe.sh` is a command users run in their own terminal (where it
+owns the TTY and can read replies, unlike the status line). It reports
+truecolor, which glyph tiers the font has, Sixel (DA1 attribute 4), the Kitty
+graphics protocol (graphics query reply), and cell aspect (CSI 16 t), then
+recommends a `CCGOLF_GLYPHS` value. Known matrix, to verify per machine with
+that probe:
+
+| Terminal | truecolor | sextant glyphs | Sixel | Kitty gfx |
+|---|---|---|---|---|
+| Windows Terminal 1.22+ | yes | yes (built-in) | yes | no |
+| mintty (Git Bash) | yes | font-dependent | yes | no |
+| kitty, Ghostty | yes | yes | no | yes |
+| WezTerm | yes | yes | yes | yes |
+| iTerm2 | yes | yes | yes (+ its own) | no |
+| VS Code integrated | yes | yes | no | no |
+| GNOME Terminal / Alacritty | yes | yes | no | no |
+| inside tmux | yes | yes | unreliable | not passed through |
+
+None of the graphics columns matter for the status line (H.1); they matter
+only for a future sidecar that owns a real TTY. The renderer always has the
+half-block truecolor fallback, which works in every row above.
+
+## G'.2 — row budget
+
+`CCGOLF_ROWS` sets the working-mode height (3–20; default
+`clamp(floor((LINES-6)/3), 4, 16)`). Captured at 100 columns:
+
+| rows | what it buys |
+|---|---|
+| 8 | hole view, 5-row golfer, one HUD line; no frame, no scorecard |
+| 11 | framed hole view with title edge and status chips; golfer has headroom |
+| 14 | adds the three-row scorecard inside the frame |
+| 18 | taller corridor: more fairway above and below the ball, bigger green |
+| 20 | the cap (`CCGOLF_ROWS` clamps to 20); near-full immersion |
+
+Frames at each are in `docs/frames/rows-*.png` (rows-24 renders 20, the cap).
+A long run can give the game half the terminal with `CCGOLF_ROWS=18`; the
+default stays modest.
+
 ## Reproducing
 
     # point the status line at the probe (hot-reloads)
