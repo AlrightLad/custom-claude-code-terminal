@@ -33,6 +33,10 @@ s.hooks=s.hooks||{};
 const mk=c=>[{hooks:[{type:"command",command:c}]}];
 s.hooks.UserPromptSubmit=mk(`bash ${p}/hooks/on-work-start.sh`);
 s.hooks.Stop=mk(`bash ${p}/hooks/on-work-stop.sh`);
+// Subagent golfers + a distinct completion sound (no-op if the hook events
+// or the sound file are absent).
+s.hooks.SubagentStart=mk(`bash ${p}/hooks/on-subagent.sh`);
+s.hooks.SubagentStop=mk(`bash ${p}/hooks/on-subagent.sh`);
 if(spinner){
   const verbs=JSON.parse(fs.readFileSync(`${p}/assets/spinner-verbs.json`,"utf8")).verbs;
   s.spinnerVerbs={mode,verbs};

@@ -39,6 +39,9 @@ export function gauss(rnd) {
 
 export const clamp = (x, lo, hi) => (x < lo ? lo : x > hi ? hi : x);
 export const lerp = (a, b, t) => a + (b - a) * t;
+// Cubic ease-in-out: slow start, slow stop. For walk and camera motion so a
+// one-frame-per-second step never reads as a hard jump.
+export const easeInOut = t => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 export const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
 export const range = (rnd, lo, hi) => lo + (hi - lo) * rnd();
 export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);

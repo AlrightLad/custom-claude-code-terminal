@@ -10,7 +10,7 @@ const fs=require("fs"),f=process.argv[1];
 const s=JSON.parse(fs.readFileSync(f,"utf8"));
 delete s.statusLine;
 delete s.spinnerVerbs;
-if(s.hooks){delete s.hooks.UserPromptSubmit;delete s.hooks.Stop;if(!Object.keys(s.hooks).length)delete s.hooks;}
+if(s.hooks){for(const k of ["UserPromptSubmit","Stop","SubagentStart","SubagentStop"])delete s.hooks[k];if(!Object.keys(s.hooks).length)delete s.hooks;}
 if(s.env){for(const k of Object.keys(s.env))if(k.startsWith("CCGOLF_"))delete s.env[k];if(!Object.keys(s.env).length)delete s.env;}
 fs.writeFileSync(f,JSON.stringify(s,null,2));
 ' "$S"

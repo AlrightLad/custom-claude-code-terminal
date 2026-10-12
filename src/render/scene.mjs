@@ -14,7 +14,7 @@ import { makeCanvas, set, get, fillRect, fillEllipse, thickLine, label, bayer, T
 import { spriteSet, blit, shadow } from './sprites.mjs';
 import { bounds, pointAt, inEllipse, quip, fairwayHalfAt, coursePars } from '../gen/course.mjs';
 import { ballDisplay, pointOnShot, DUR, CLUBS } from '../sim/golf.mjs';
-import { clamp, dist } from '../util/rng.mjs';
+import { clamp, dist, easeInOut } from '../util/rng.mjs';
 import { statusRow, scorecard, leaderboardRows } from './hud.mjs';
 import { renderIdle } from './idle.mjs';
 import { drawWeather } from './seasons.mjs';
@@ -208,7 +208,7 @@ function drawGround(c, hole, m, R, seedInt) {
 
 // ---------------------------------------------------------------- play ----
 
-function drawTrace(c, shot, m, f, colFlight, colRoll) {
+function drawTrace(c, shot, m, f, colFlight, colRoll, headCol) {
   const target = shot.splash || shot.land || shot.end;
   const lenPx = Math.hypot(m.rx(target.x - shot.from.x), m.ry(target.y - shot.from.y));
   const steps = Math.max(2, Math.ceil(lenPx * 1.2));
@@ -216,7 +216,10 @@ function drawTrace(c, shot, m, f, colFlight, colRoll) {
   const dotted = lenPx >= 12;
   for (let i = 0; i <= upto; i++) {
     const p = pointOnShot(shot, i / steps);
-    if (!dotted || i % 2 === 0) set(c, Math.round(m.px(p.x)), Math.round(m.py(p.y)), colFlight);
+    // Comet: the leading few dots are bright (the ball), the rest the trace.
+    const lead = upto - i;
+    const col = (f < 1 && headCol && lead <= 3) ? headCol : colFlight;
+    if (!dotted || i % 2 === 0 || lead <= 3) set(c, Math.round(m.px(p.x)), Math.round(m.py(p.y)), col);
   }
   if (f >= 1 && shot.land && !shot.splash) {
     const rl = Math.hypot(m.rx(shot.end.x - shot.land.x), m.ry(shot.end.y - shot.land.y));
@@ -290,7 +293,7 @@ export function caddieMap(cad, R) {
 function golferWorld(h) {
   const cur = h.shots[h.shots.length - 1];
   if (h.phase === 'walk' && cur) {
-    const t = clamp(h.pt / DUR.walk, 0, 1);
+    const t = easeInOut(clamp(h.pt / DUR.walk, 0, 1));
     return { x: cur.from.x + (cur.end.x - cur.from.x) * t, y: cur.from.y + (cur.end.y - cur.from.y) * t };
   }
   if ((h.phase === 'flight' || h.phase === 'result') && cur && !cur.holed) return { x: cur.from.x, y: cur.from.y };
@@ -320,7 +323,7 @@ function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg, season) {
   const ball = ballDisplay(h);
   if (cur && h.phase !== 'tee') {
     const f = h.phase === 'flight' ? clamp(h.pt / (cur.dur || 1), 0, 1) : 1;
-    drawTrace(c, cur, m, f, R.trace, R.white);
+    drawTrace(c, cur, m, f, R.trace, R.white, R.ball);
   }
   drawPin(c, hole, m, R, tier);
   const g = golferWorld(h);
