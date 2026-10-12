@@ -18,9 +18,11 @@ export function loadPalette(name = 'augusta') {
   });
   const names = {};
   p.colors.forEach((c, i) => { names[c.name] = i; });
-  // roles may name colours by index or by colour name
+  // roles may name colours by index or by colour name; list roles (shirts,
+  // pants, bags) resolve each entry.
   const roles = {};
-  for (const [k, v] of Object.entries(p.roles)) roles[k] = typeof v === 'number' ? v : names[v];
+  const resolve = v => (typeof v === 'number' ? v : names[v]);
+  for (const [k, v] of Object.entries(p.roles)) roles[k] = Array.isArray(v) ? v.map(resolve) : resolve(v);
   return { name: p.name, rgb, roles, names, ansi256: rgb.map(toAnsi256), frame: p.frame || {}, _lab: null, _D: null };
 }
 

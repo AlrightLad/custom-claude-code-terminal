@@ -1,98 +1,209 @@
-// Scene composition: hole view, green view, idle strip and HUD text rows.
-// Produces a backend-agnostic frame: a palette-index canvas at the tier's
-// subpixel resolution, text overlays positioned in cells, and plain text
-// rows. Screen units: one cell is 1 unit wide and 2 units tall, so a
-// "unit" is square on screen; a tier maps units to subpixels with (sx, sy/2).
-import { makeCanvas, set, get, fillRect, fillEllipse, thickLine, label, upscale, TRANSPARENT } from './raster.mjs';
-import { GOLFER, GOLFER_BALL, CADDIE, CART, FLAG, TREE_SIDE, CLOUD, blit, scaleSprite } from './sprites.mjs';
-import { bounds, pointAt, quip } from '../gen/course.mjs';
-import { ballDisplay, pointOnShot, scoreName, toParText, DUR } from '../sim/golf.mjs';
-import { hash32, clamp, dist } from '../util/rng.mjs';
+// Scene composition: framed hole view with a scrolling camera and minimap,
+// green close-up, idle strip, HUD rows. Produces a backend-agnostic frame:
+// text rows above the picture (frame top), a palette-index canvas at the
+// tier's subpixel resolution with text overlays in cell units, and text rows
+// below (frame bottom, scorecard, status chips).
+//
+// Layers never cross: the canvas holds world geometry and sprites only; all
+// text lives in the text rows (the frame's side bars are the one overlay,
+// and they are frame, not HUD).
+//
+// Screen units: one cell is 1 unit wide and 2 units tall, so a unit is
+// square on screen; a tier maps units to subpixels with (sx, sy/2).
+import { makeCanvas, set, get, fillRect, fillEllipse, thickLine, label, bayer, TRANSPARENT } from './raster.mjs';
+import { spriteSet, blit, shadow } from './sprites.mjs';
+import { bounds, pointAt, inEllipse, quip, fairwayHalfAt, coursePars } from '../gen/course.mjs';
+import { ballDisplay, pointOnShot, DUR, CLUBS } from '../sim/golf.mjs';
+import { clamp, dist } from '../util/rng.mjs';
+import { statusRow, scorecard } from './hud.mjs';
+import { renderIdle } from './idle.mjs';
 
 export { TRANSPARENT };
 
-const R = { sky: 0, outline: 0, cup: 0, tree: 1, rough: 2, fairway: 3, green: 4, fringe: 5, tee: 5, sand: 6,
-  water: 7, waterLight: 8, white: 9, red: 10, skin: 11, yellow: 12, gray: 13, navy: 14, brown: 15 };
+// Zoom rule (yards per column, i.e. per screen unit; the ONE world-to-screen
+// conversion, everything in the scene goes through windowMap built from it):
+//   needX = (distance ball->target + 2*30y margin) / picture width in units
+//   needY = (corridor: 2*fairway half-width + 2*14y rough) / picture height
+//           in units, or the green's height + 2*12y in the green view
+//   u = clamp(max(needX, needY), U_MIN, U_MAX)
+// The target is the pin when it is within reach of a full shot, otherwise
+// the landing zone one full shot down the fairway. The camera centres
+// between ball and target, nudged up so the sprite standing above the ball
+// is inside the picture, and is clamped to the hole's bounding box.
+//
+// U_MAX is the proportion guard. Sprites are a fixed 4 cells x 5 rows (ten
+// units tall) no matter the zoom, so the golfer's apparent size in yards is
+// 10*u. The smallest green is 20 yards across; at 2 yards per column it
+// draws 10 units tall, the golfer's height, and anything coarser makes him
+// taller than the green. So the camera never zooms out past 2 y/col: on a
+// short picture that means the corridor edges scroll in and out of view,
+// which is the right trade (the same rule a top-down NES golf game uses).
+const U_MIN = 1.0, U_MAX = 2.0, MARGIN_X = 30, ROUGH_MARGIN = 14, GREEN_MARGIN = 12;
+const SPRITE_UNITS = 10; // golfer height in screen units (5 rows)
 
-function windArrow(hole) {
-  const a = hole.wind.dir; // 0 = toward +x (screen right)
-  const oct = Math.round(a / (Math.PI / 4)) & 7;
-  return ['->', 'v>', 'v', '<v', '<-', '<^', '^', '^>'][oct];
+// ------------------------------------------------------------- helpers ----
+
+function hashInt(x, y, seed) {
+  let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1013904223)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  n ^= n >>> 16;
+  return (n >>> 0) / 4294967296;
+}
+function lattice(x, y, seed) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  let fx = x - x0, fy = y - y0;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const a = hashInt(x0, y0, seed), b = hashInt(x0 + 1, y0, seed), c = hashInt(x0, y0 + 1, seed), d = hashInt(x0 + 1, y0 + 1, seed);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+function vnoise(x, y, seed) {
+  return 0.65 * lattice(x / 7, y / 7, seed) + 0.35 * lattice(x / 3.2 + 11, y / 3.2 + 7, seed + 7);
+}
+// Rough texture baked once per process into a 64x64 yard tile.
+const NOISE_N = 64;
+const NOISE = new Float32Array(NOISE_N * NOISE_N);
+for (let y = 0; y < NOISE_N; y++) for (let x = 0; x < NOISE_N; x++) {
+  NOISE[y * NOISE_N + x] = vnoise(x, y, 4242) * 0.5 + vnoise((x + 32) % 64, (y + 32) % 64, 4242) * 0.5;
+}
+function roughNoise(wx, wy, seedInt) {
+  const ix = ((wx + (seedInt & 63)) | 0) & 63, iy = ((wy + ((seedInt >> 6) & 63)) | 0) & 63;
+  return NOISE[iy * NOISE_N + ix];
 }
 
-function clubName(k) { return k === 'PT' ? 'putter' : k; }
-
-// ------------------------------------------------------------- mapping ----
-
-// Fit a world box (yards) into cols x picRows cells with a gutter (cells)
-// kept free on the left and right. Returns subpixel mapping functions.
-function makeMap(cols, picRows, box, gutter, tier) {
+// World yards -> canvas subpixels for a window whose top-left is (minX, minY)
+// at u yards per unit, inset by gutter cells on the left.
+function windowMap(tier, minX, minY, u, gutterCells) {
   const kx = tier.sx, ky = tier.sy / 2;
-  const unitsW = Math.max(8, cols - 2 * gutter), unitsH = picRows * 2;
-  const u = Math.max((box.maxX - box.minX) / unitsW, (box.maxY - box.minY) / unitsH, 0.5);
-  const cw = (box.maxX - box.minX) / u, ch = (box.maxY - box.minY) / u;
-  const offX = gutter + (unitsW - cw) / 2, offY = (unitsH - ch) / 2;
+  const gx = gutterCells * kx;
   return {
-    u, kx, ky,
-    px: x => ((x - box.minX) / u + offX) * kx,
-    py: y => ((y - box.minY) / u + offY) * ky,
+    u, kx, ky, minX, minY,
+    px: x => gx + (x - minX) / u * kx,
+    py: y => (y - minY) / u * ky,
     rx: v => v / u * kx,
     ry: v => v / u * ky,
-    wx: X => (X / kx - offX) * u + box.minX,
-    wy: Y => (Y / ky - offY) * u + box.minY,
+    wx: X => (X - gx) / kx * u + minX,
+    wy: Y => Y / ky * u + minY,
   };
 }
 
-// ----------------------------------------------------------- hole layers --
+// -------------------------------------------------------------- ground ----
 
-function drawCourse(c, hole, m, seed) {
+function drawGround(c, hole, m, R, seedInt) {
   const W = c.w, H = c.h;
-  fillRect(c, 0, 0, W, H, R.rough);
-  // Border forest noise on the far edges so wide terminals do not show a flat slab.
-  const seedInt = hash32(seed);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const wx = m.wx(x), wy = m.wy(y);
-    if (Math.abs(wy) > hole.roughHalf + 30 || wx < -30 || wx > hole.chord + hole.green.rx + 40) {
-      let n = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + seedInt) | 0;
-      n = Math.imul(n ^ (n >>> 13), 1274126177);
-      if (((n ^ (n >>> 16)) >>> 0) % 100 < 55) c.px[y * W + x] = R.tree;
-    }
-  }
-  for (const t of hole.trees) fillEllipse(c, m.px(t.x), m.py(t.y), Math.max(0.6, m.rx(t.r)), Math.max(0.6, m.ry(t.r)), R.tree);
-  // Fairway band from just past the tee to the green.
-  const pts = hole.center;
-  const start = pointAt(hole, 10, 0);
-  const segs = [start, ...pts.slice(1)];
-  for (let i = 0; i < segs.length - 1; i++) {
-    thickLine(c, m.px(segs[i].x), m.py(segs[i].y), m.px(segs[i + 1].x), m.py(segs[i + 1].y),
-      Math.max(0.8, m.rx(hole.fairwayHalf)), Math.max(0.8, m.ry(hole.fairwayHalf)), R.fairway);
-  }
+  const u = m.u;
+  const edge = u * 0.9;
+  const stripeF = Math.max(4 * u, 6), stripeG = Math.max(1.5 * u, 2);
+  const lipW = u * 1.0;
+  const dyWorld = u / m.ky;
   const g = hole.green;
-  fillEllipse(c, m.px(g.x), m.py(g.y), m.rx(g.rx + 2.5), m.ry(g.ry + 2.5), R.fringe);
-  fillEllipse(c, m.px(g.x), m.py(g.y), m.rx(g.rx), m.ry(g.ry), R.green);
-  // Tee box with two markers.
-  const tw = Math.max(2, Math.round(m.rx(9))), th = Math.max(1, Math.round(m.ry(10)));
-  fillRect(c, m.px(0) - tw / 2, m.py(0) - th / 2, tw, th, R.tee);
-  set(c, Math.round(m.px(0)), Math.round(m.py(-4)), R.white);
-  set(c, Math.round(m.px(0)), Math.round(m.py(4)), R.white);
-  for (const b of hole.bunkers) fillEllipse(c, m.px(b.x), m.py(b.y), Math.max(0.7, m.rx(b.rx)), Math.max(0.7, m.ry(b.ry)), R.sand);
-  for (const w of hole.water) {
-    fillEllipse(c, m.px(w.x), m.py(w.y), Math.max(0.7, m.rx(w.rx)), Math.max(0.7, m.ry(w.ry)), R.water);
-    const x0 = Math.max(0, Math.floor(m.px(w.x) - m.rx(w.rx))), x1 = Math.min(W - 1, Math.ceil(m.px(w.x) + m.rx(w.rx)));
-    for (let x = x0; x <= x1; x++) {
-      for (let y = Math.max(0, Math.floor(m.py(w.y) - m.ry(w.ry)) - 1); y < H; y++) {
-        if (get(c, x, y) === R.water) { if (get(c, x, y - 1) !== R.water) set(c, x, y, R.waterLight); break; }
+  const collar = 3;
+  const gPadX = g.rx + collar, gPadY = g.ry + collar;
+  const apronLen = 16;
+  const tierX = g.tier === null ? null : g.x + g.tier * g.rx;
+  const water = hole.water, bunkers = hole.bunkers;
+  const segs = [];
+  let sBase = 0;
+  for (let i = 0; i < hole.center.length - 1; i++) {
+    const A = hole.center[i], B = hole.center[i + 1];
+    const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+    segs.push({ ax: A.x, ay: A.y, ux: dx / len, uy: dy / len, len, sBase });
+    sBase += len;
+  }
+  const nseg = segs.length;
+  const lengthEnd = hole.length - 3;
+  const px = c.px;
+  const RD = R.roughDark, RM = R.rough, RL = R.roughLight, FD = R.fairwayDark, FL = R.fairwayLight;
+  for (let y = 0; y < H; y++) {
+    const wy = m.wy(y);
+    const rowOff = y * W;
+    for (let x = 0; x < W; x++) {
+      const wx = m.wx(x);
+      let v = -1;
+      for (let i = 0; i < water.length; i++) {
+        const w = water[i];
+        const ex = (wx - w.x) / w.rx, ey = (wy - w.y) / w.ry;
+        if (ex * ex + ey * ey <= 1) {
+          const ey2 = (wy - dyWorld - w.y) / w.ry;
+          if (ex * ex + ey2 * ey2 > 1) v = R.waterLight;
+          else {
+            const ey3 = (wy + dyWorld * 2 - w.y) / w.ry;
+            v = (w.kind !== 'creek' && ex * ex + ey3 * ey3 > 1) ? R.waterDeep : R.water;
+          }
+          break;
+        }
       }
+      if (v < 0) for (let i = 0; i < bunkers.length; i++) {
+        const b = bunkers[i];
+        const ex = (wx - b.x) / b.rx, ey = (wy - b.y) / b.ry;
+        if (ex * ex + ey * ey <= 1) {
+          const ex2 = (wx - lipW - b.x) / b.rx;
+          v = ex2 * ex2 + ey * ey <= 1 ? R.sand : R.sandLip;
+          break;
+        }
+      }
+      if (v < 0) {
+        const gx = (wx - g.x) / g.rx, gy = (wy - g.y) / g.ry;
+        if (gx * gx + gy * gy <= 1) {
+          v = (Math.floor((wx + wy) / stripeG) & 1) ? R.greenLight : R.greenDark;
+          if (tierX !== null) {
+            if (Math.abs(wx - tierX) < u * 0.6) v = R.fringe;
+            else if (wx > tierX && v === R.greenDark) v = R.green;
+          }
+        } else {
+          const fx = (wx - g.x) / gPadX, fy = (wy - g.y) / gPadY;
+          if (fx * fx + fy * fy <= 1) {
+            v = (g.elevated && wx < g.x - g.rx * 0.2) ? R.fairwayDark : R.fringe;
+          } else {
+            let bestDist = Infinity, s = 0, d = 0;
+            for (let i = 0; i < nseg; i++) {
+              const sg = segs[i];
+              const rx = wx - sg.ax, ry = wy - sg.ay;
+              const t = rx * sg.ux + ry * sg.uy;
+              const tc = t < 0 ? 0 : t > sg.len ? sg.len : t;
+              const cx = sg.ax + sg.ux * tc, cy = sg.ay + sg.uy * tc;
+              const dd = (wx - cx) * (wx - cx) + (wy - cy) * (wy - cy);
+              if (dd < bestDist) {
+                bestDist = dd;
+                d = rx * -sg.uy + ry * sg.ux;
+                s = sg.sBase + (i === 0 && t < 0 ? t : i === nseg - 1 && t > sg.len ? t : tc);
+              }
+            }
+            const ad = d < 0 ? -d : d;
+            const inPlay = s >= 8 && s <= lengthEnd;
+            const hb = fairwayHalfAt(hole, s);
+            const apron = s > hole.length - g.rx - apronLen && s <= hole.length && ad < hb * 0.7;
+            if (s >= -5 && s <= 6 && ad <= 5.5) v = R.tee;
+            else if (apron) v = R.fairwayLight;
+            else if (inPlay && ad < hb - edge) v = (Math.floor(s / stripeF) & 1) ? FL : FD;
+            else if (inPlay && ad < hb + edge && bayer(x, y) >= (ad - (hb - edge)) / (2 * edge)) v = (Math.floor(s / stripeF) & 1) ? FL : FD;
+            else {
+              const n = roughNoise(wx, wy, seedInt);
+              v = n < 0.33 ? RD : n < 0.7 ? RM : RL;
+            }
+          }
+        }
+      }
+      px[rowOff + x] = v;
     }
   }
-  for (const s of hole.stakes) set(c, Math.round(m.px(s.x)), Math.round(m.py(s.y)), R.white);
-  if (m.ry(5) >= 1.5) {
-    for (const t of hole.trees) {
-      const x = Math.round(m.px(t.x) + m.rx(t.r) * 0.5), y = Math.round(m.py(t.y) + m.ry(t.r) * 0.6);
-      if (get(c, x, y) === R.tree) set(c, x, y, R.outline);
-    }
+  for (const t of hole.trees) {
+    const cx = m.px(t.x), cy = m.py(t.y);
+    const rx = Math.max(0.6, m.rx(t.r)), ry = Math.max(0.6, m.ry(t.r));
+    if (cx + rx < 0 || cx - rx > W || cy + ry < 0 || cy - ry > H) continue;
+    fillEllipse(c, cx, cy, rx, ry, R.treeDark);
+    if (rx >= 1.5) fillEllipse(c, cx - rx * 0.3, cy - ry * 0.3, rx * 0.5, ry * 0.5, R.treeLight);
+    else if (rx >= 0.9) set(c, Math.round(cx - 0.5), Math.round(cy - 0.5), R.treeLight);
+    if (rx >= 1.5) { const ox = Math.round(cx + rx * 0.55), oy = Math.round(cy + ry * 0.6); if (get(c, ox, oy) === R.treeDark) set(c, ox, oy, R.outline); }
   }
+  for (const s of hole.stakes) {
+    const x = Math.round(m.px(s.x)), y = Math.round(m.py(s.y));
+    set(c, x, y, R.stake); if (m.ky >= 1.5) set(c, x, y - 1, R.stake);
+  }
+  set(c, Math.round(m.px(0)), Math.round(m.py(-4)), R.stake);
+  set(c, Math.round(m.px(0)), Math.round(m.py(4)), R.stake);
 }
+
+// ---------------------------------------------------------------- play ----
 
 function drawTrace(c, shot, m, f, colFlight, colRoll) {
   const target = shot.splash || shot.land || shot.end;
@@ -114,60 +225,169 @@ function drawTrace(c, shot, m, f, colFlight, colRoll) {
   }
 }
 
-function golferFrame(h, now) {
-  switch (h.phase) {
-    case 'swing': return GOLFER.back;
-    case 'flight': return GOLFER.through;
-    case 'result': return h.pt < 900 ? GOLFER.through : GOLFER.address;
-    case 'walk': return Math.floor(now / 500) % 2 ? GOLFER.walk1 : GOLFER.walk2;
-    case 'holed': return GOLFER.cheer;
-    default: return GOLFER.address;
+// Cup, flagstick, wind-reactive flag and a drop shadow. Cloth only.
+function drawPin(c, hole, m, R, tier) {
+  const px = Math.round(m.px(hole.pin.x)), py = Math.round(m.py(hole.pin.y));
+  const kx = tier.sx, ky = tier.sy / 2;
+  const cupW = Math.max(1, Math.round(kx * 0.6)), cupH = Math.max(1, Math.round(ky * 0.6));
+  set(c, px + 1, py + 1, R.shadow);
+  if (kx > 1) set(c, px + 2, py + 1, R.shadow);
+  for (let yy = 0; yy < cupH; yy++) for (let xx = 0; xx < cupW; xx++) set(c, px + xx, py + yy, R.cup);
+  // A flagstick is a little taller than a golfer: 3.6 rows against 5.
+  const poleH = Math.max(3, Math.round(ky * 2 * 3.6));
+  for (let i = 1; i <= poleH; i++) set(c, px, py - i, R.pole);
+  const speed = hole.wind.speed;
+  const dirX = Math.cos(hole.wind.dir);
+  const toRight = dirX >= 0;
+  const strength = clamp(speed / 14, 0, 1);
+  const flagW = Math.max(1, Math.round((1 + 2.5 * strength * Math.abs(dirX)) * kx));
+  const flagH = Math.max(1, Math.round(ky * 1.1));
+  const top = py - poleH;
+  if (speed < 2) {
+    for (let i = 0; i < Math.max(2, flagH * 2); i++) set(c, px + 1, top + i, R.flag);
+  } else {
+    for (let i = 0; i < flagW; i++) for (let j = 0; j < flagH; j++) {
+      const taper = flagW > 2 && i === flagW - 1 && j === flagH - 1 && flagH > 1;
+      if (!taper) set(c, px + (toRight ? 1 + i : -1 - i), top + j, R.flag);
+    }
   }
 }
 
-function golferMap(cad) {
-  const g = cad.golfer;
-  return { h: g.hat ? R.white : g.skin, s: g.shirt, p: g.pants, c: R.gray };
+function golferPose(h, now, sprites) {
+  const g = sprites.golfer;
+  switch (h.phase) {
+    case 'swing': return g.back;
+    case 'flight': return h.pt < (h.shots[h.shots.length - 1]?.dur || 1500) * 0.35 ? g.impact : g.through;
+    case 'result': return h.pt < 900 ? g.through : g.address;
+    case 'walk': return Math.floor(now / 500) % 2 ? g.walk1 : g.walk2;
+    case 'holed': return g.cheer;
+    case 'stand': {
+      // Idle breathing only: lean on the club, glance down the fairway now
+      // and then, shift the weight. Nothing here changes state.
+      const beat = Math.floor(now / 1000) % 9;
+      return beat === 6 || beat === 7 ? (g.look || g.address) : (g.lean || g.address);
+    }
+    default: return g.address;
+  }
 }
 
-function drawPlay(c, h, hole, m, cad, now, tier) {
+export function golferMap(cad, R) {
+  const g = cad.golfer;
+  return { h: g.hat ? R.white : (g.skin ? R.skinDark : R.skin), f: g.skin ? R.skinDark : R.skin,
+    s: R.shirts[g.shirt % R.shirts.length], p: R.pants[g.pants % R.pants.length], k: R.outline, c: R.club, C: R.gray };
+}
+export function caddieMap(cad, R) {
+  return { h: cad.hat ? R.white : (cad.skin ? R.skinDark : R.skin), f: cad.skin ? R.skinDark : R.skin,
+    s: R.shirts[cad.shirt % R.shirts.length], p: R.navy, k: R.outline, b: R.bags[cad.bag % R.bags.length], B: R.gray, c: R.gray };
+}
+
+// Where the golfer stands in world yards for the current phase.
+function golferWorld(h) {
+  const cur = h.shots[h.shots.length - 1];
+  if (h.phase === 'walk' && cur) {
+    const t = clamp(h.pt / DUR.walk, 0, 1);
+    return { x: cur.from.x + (cur.end.x - cur.from.x) * t, y: cur.from.y + (cur.end.y - cur.from.y) * t };
+  }
+  if ((h.phase === 'flight' || h.phase === 'result') && cur && !cur.holed) return { x: cur.from.x, y: cur.from.y };
+  return { x: h.ball.x, y: h.ball.y };
+}
+
+// Returns the sprite's bounding box so the caller can assert it fits.
+function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg) {
   const shots = h.shots;
-  for (let i = 0; i < shots.length - 1; i++) drawTrace(c, shots[i], m, 1, R.gray, R.gray);
+  for (let i = 0; i < shots.length - 1; i++) drawTrace(c, shots[i], m, 1, R.traceOld, R.traceOld);
   const cur = shots[shots.length - 1];
   const ball = ballDisplay(h);
   if (cur && h.phase !== 'tee') {
     const f = h.phase === 'flight' ? clamp(h.pt / (cur.dur || 1), 0, 1) : 1;
-    drawTrace(c, cur, m, f, R.yellow, R.white);
+    drawTrace(c, cur, m, f, R.trace, R.white);
   }
-  const fx = tier.sx, fy = tier.sy / 2;
-  // Flag with the cup at the pin.
-  const flag = scaleSprite(FLAG, fx, fy);
-  blit(c, flag, Math.round(m.px(hole.pin.x)), Math.round(m.py(hole.pin.y)) - (flag.length - 1), { w: R.white, r: R.red, k: R.cup });
-  // Golfer position: at the ball, walking toward it, or cheering by the hole.
-  let gx, gy;
-  if (h.phase === 'walk' && cur) {
-    const t = clamp(h.pt / DUR.walk, 0, 1);
-    gx = cur.from.x + (cur.end.x - cur.from.x) * t; gy = cur.from.y + (cur.end.y - cur.from.y) * t;
-  } else if (h.phase === 'flight' && cur) { gx = cur.from.x; gy = cur.from.y; }
-  else { gx = h.ball.x; gy = h.ball.y; }
-  const frame = scaleSprite(golferFrame(h, now), fx, fy);
-  const anchorX = Math.round(GOLFER_BALL.x * fx), anchorY = Math.round(GOLFER_BALL.y * fy);
-  const faceLeft = hole.pin.x < gx - 2 && h.phase !== 'walk';
-  const sx = faceLeft ? Math.round(m.px(gx)) + 1 : Math.round(m.px(gx)) - anchorX;
-  const sy = Math.round(m.py(gy)) - anchorY;
-  blit(c, frame, sx, sy, golferMap(cad), faceLeft);
-  if (!(h.holed && h.phase === 'holed')) set(c, Math.round(m.px(ball.x)), Math.round(m.py(ball.y)), R.white);
-  // Floating result label.
-  if ((h.phase === 'result' || h.phase === 'holed') && cur) {
-    const text = h.phase === 'holed' ? scoreName(hole.par, h.strokes) + (h.strokes === 1 ? '' : ' ' + h.strokes) : (cur.label || '');
-    if (text) {
-      const cols = Math.floor(c.w / tier.sx);
-      const col = Math.floor(m.px(ball.x) / tier.sx) + 2, row = Math.floor(m.py(ball.y) / tier.sy);
-      const fg = /IN!|BIRDIE|EAGLE|ACE|ALBATROSS|CHIP/.test(text) ? R.yellow : /WATER|OB|TREE|SLICE|HOOK|DOUBLE|TRIPLE|^\+/.test(text) ? R.red : R.white;
-      const placeCol = col + text.length + 1 > cols ? Math.max(0, Math.floor(m.px(ball.x) / tier.sx) - text.length - 2) : col;
-      label(c, placeCol, clamp(row, 0, Math.floor(c.h / tier.sy) - 1), text, fg);
+  drawPin(c, hole, m, R, tier);
+  const g = golferWorld(h);
+  const pose = golferPose(h, now, sprites);
+  const faceLeft = hole.pin.x < g.x - 2 && h.phase !== 'walk';
+  const bx = Math.round(m.px(g.x)), by = Math.round(m.py(g.y));
+  let sx = faceLeft ? bx + 1 - (pose[0].length - sprites.ball.x) : bx - sprites.ball.x;
+  let sy = by - sprites.ball.y;
+  const bw = pose[0].length, bh = pose.length;
+  // Visibility rule. While the golfer stands at the ball (tee, address,
+  // swing, standing, celebrating) the camera is anchored on him and the
+  // sprite MUST fit: a violation is logged loudly and clamped. While the
+  // camera follows the ball (flight, result, walk) he may be off camera;
+  // then he is skipped entirely rather than drawn clipped at an edge.
+  const gutterPx = m.px(m.minX);
+  const minX = Math.round(gutterPx), maxX = c.w - Math.round(gutterPx);
+  const mustFit = h.phase === 'tee' || h.phase === 'address' || h.phase === 'swing' || h.phase === 'stand' || h.phase === 'holed';
+  const inside = sx >= minX && sx + bw <= maxX && sy >= 0 && sy + bh <= c.h;
+  if (!inside) {
+    if (!mustFit) {
+      if (!(h.holed && h.phase === 'holed')) {
+        const bpx = Math.round(m.px(ball.x)), bpy = Math.round(m.py(ball.y));
+        if (h.phase !== 'flight') set(c, bpx, bpy + 1, R.shadow);
+        set(c, bpx, bpy, R.ball);
+        if (tier.sx > 1) set(c, bpx + 1, bpy, R.ball);
+      }
+      return { x: sx, y: sy, w: bw, h: bh, visible: false };
     }
+    const cx0 = clamp(sx, minX, Math.max(minX, maxX - bw)), cy0 = clamp(sy, 0, Math.max(0, c.h - bh));
+    if (dbg) dbg.spriteClamped = `(${sx},${sy})->(${cx0},${cy0})`;
+    sx = cx0; sy = cy0;
   }
+  const map = golferMap(cad, R);
+  // The caddie stands a few cells behind the golfer (away from the target)
+  // whenever nobody is swinging, and keeps the bag out of the shot.
+  if (h.phase !== 'swing' && h.phase !== 'flight' && cad.transport !== 'cart') {
+    const cs = sprites.caddie.stand;
+    const cx0 = faceLeft ? sx + bw + 2 * tier.sx : sx - cs[0].length - 2 * tier.sx;
+    const cy0 = sy + bh - cs.length;
+    if (cx0 >= minX && cx0 + cs[0].length <= maxX) { shadow(c, cs, cx0, cy0, R.shadow, faceLeft); blit(c, cs, cx0, cy0, caddieMap(cad, R), faceLeft); }
+  }
+  shadow(c, pose, sx, sy, R.shadow, faceLeft);
+  blit(c, pose, sx, sy, map, faceLeft);
+  if (!(h.holed && h.phase === 'holed')) {
+    const bpx = Math.round(m.px(ball.x)), bpy = Math.round(m.py(ball.y));
+    if (h.phase !== 'flight') set(c, bpx, bpy + 1, R.shadow);
+    set(c, bpx, bpy, R.ball);
+    if (tier.sx > 1) set(c, bpx + 1, bpy, R.ball);
+  }
+  return { x: sx, y: sy, w: bw, h: bh };
+}
+
+// Full-hole minimap in a top corner away from the golfer, drawn under the
+// play layer so a sprite is never covered by it.
+function drawMinimap(c, hole, h, m, R, tier, view, golferPx) {
+  const kx = tier.sx;
+  const cols = Math.floor(c.w / kx), picRows = Math.floor(c.h / tier.sy);
+  const mmCols = clamp(Math.floor(cols / 6), 10, 22), mmRows = picRows >= 8 ? 3 : 2;
+  const mw = mmCols * kx, mh = mmRows * tier.sy;
+  const golferLeft = golferPx < c.w / 2;
+  const x0 = golferLeft ? c.w - 2 * kx - mw : 2 * kx, y0 = 1;
+  fillRect(c, x0, y0, mw, mh, R.frameBg);
+  const box = bounds(hole);
+  const padX = 2 * kx, padY = 2;
+  const sX = Math.min((mw - 2 * padX) / (box.maxX - box.minX), (mh - 2 * padY) / (box.maxY - box.minY) * (kx / (tier.sy / 2)));
+  const sY = sX * ((tier.sy / 2) / kx);
+  const cx = x0 + mw / 2, cy = y0 + mh / 2;
+  const mx = x => cx + (x - (box.minX + box.maxX) / 2) * sX;
+  const my = y => cy + (y - (box.minY + box.maxY) / 2) * sY;
+  const pts = hole.center;
+  for (let i = 0; i < pts.length - 1; i++) {
+    thickLine(c, mx(pts[i].x), my(pts[i].y), mx(pts[i + 1].x), my(pts[i + 1].y), Math.max(0.6, hole.fairwayHalf * sX), Math.max(0.6, hole.fairwayHalf * sY), R.fairway);
+  }
+  for (const w of hole.water) fillEllipse(c, mx(w.x), my(w.y), Math.max(0.5, w.rx * sX), Math.max(0.5, Math.min(w.ry, 20) * sY), R.water);
+  for (const b of hole.bunkers) set(c, Math.round(mx(b.x)), Math.round(my(b.y)), R.sand);
+  fillEllipse(c, mx(hole.green.x), my(hole.green.y), Math.max(0.8, hole.green.rx * sX), Math.max(0.8, hole.green.ry * sY), R.green);
+  set(c, Math.round(mx(0)), Math.round(my(0)), R.tee);
+  if (view) {
+    const vx0 = Math.round(mx(view.minX)), vx1 = Math.round(mx(view.maxX)), vy0 = Math.round(my(view.minY)), vy1 = Math.round(my(view.maxY));
+    for (let x = Math.max(x0, vx0); x <= Math.min(x0 + mw - 1, vx1); x++) { set(c, x, Math.max(y0, vy0), R.gray); set(c, x, Math.min(y0 + mh - 1, vy1), R.gray); }
+    for (let y = Math.max(y0, vy0); y <= Math.min(y0 + mh - 1, vy1); y++) { set(c, Math.max(x0, vx0), y, R.gray); set(c, Math.min(x0 + mw - 1, vx1), y, R.gray); }
+  }
+  const ball = ballDisplay(h);
+  set(c, Math.round(mx(ball.x)), Math.round(my(ball.y)), R.ball);
+  set(c, Math.round(mx(hole.pin.x)), Math.round(my(hole.pin.y)), R.flag);
+  for (let x = x0; x < x0 + mw; x++) { set(c, x, y0, R.frame); set(c, x, y0 + mh - 1, R.frame); }
+  for (let y = y0; y < y0 + mh; y++) { set(c, x0, y, R.frame); set(c, x0 + mw - 1, y, R.frame); }
 }
 
 // --------------------------------------------------------------- views ----
@@ -183,161 +403,132 @@ export function chooseView(h, hole) {
   return d <= 42 && h.lie !== 'water' ? 'green' : 'hole';
 }
 
+// The next target: the pin when reachable, otherwise one full shot along the
+// fairway from the ball.
+function nextTarget(h, hole) {
+  const dPin = dist(h.ball, hole.pin);
+  const reach = (h.lie === 'tee' ? CLUBS[0].carry : h.lie === 'fairway' ? CLUBS[1].carry : CLUBS[3].carry) + 15;
+  if (dPin <= reach) return hole.pin;
+  const pr = projectS(hole, h.ball);
+  return pointAt(hole, pr + Math.min(reach - 15, dPin), 0);
+}
+function projectS(hole, P) {
+  // along-track position of P (yards), nearest segment
+  let best = Infinity, s = 0, sBase = 0;
+  const pts = hole.center;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = pts[i], B = pts[i + 1];
+    const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const t = clamp((P.x - A.x) * ux + (P.y - A.y) * uy, 0, len);
+    const dd = Math.hypot(P.x - (A.x + ux * t), P.y - (A.y + uy * t));
+    if (dd < best) { best = dd; s = sBase + t; }
+    sBase += len;
+  }
+  return s;
+}
+
+// Camera for the hole view and the green view. Returns {m, win, info}.
+function camera(view, h, hole, cols, picRows, gutter, tier) {
+  const unitsW = Math.max(8, cols - 2 * gutter), unitsH = picRows * 2;
+  const focus = ballDisplay(h);
+  const box = bounds(hole);
+  let target, needX, needY;
+  if (view === 'green') {
+    target = hole.pin;
+    needX = (Math.abs(target.x - focus.x) + 2 * MARGIN_X) / unitsW;
+    needY = (2 * hole.green.ry + 2 * GREEN_MARGIN) / unitsH;
+  } else {
+    target = nextTarget(h, hole);
+    const hbMax = hole.fairwayHalf * (1 + hole.width.amp);
+    needX = (Math.abs(target.x - focus.x) + 2 * MARGIN_X) / unitsW;
+    needY = (2 * hbMax + 2 * ROUGH_MARGIN) / unitsH;
+  }
+  // In the green view the sprite stands up to 9.5 units above the ball, so
+  // the vertical span ball<->pin must fit under that headroom.
+  if (view === 'green') needY = Math.max(needY, (Math.abs(target.y - focus.y) + 2 * GREEN_MARGIN) / Math.max(2, unitsH - 9.5 - 1.2));
+  const u = clamp(Math.max(needX, needY), U_MIN, U_MAX);
+  const viewW = unitsW * u, viewH = unitsH * u;
+  // room for the golfer sprite at either end of the hole
+  const bx0 = box.minX - 5 * u, bx1 = box.maxX + 5 * u;
+  let camX = (focus.x + target.x) / 2;
+  camX = bx1 - bx0 <= viewW ? (bx0 + bx1) / 2 : clamp(camX, bx0 + viewW / 2, bx1 - viewW / 2);
+  // Vertical: the sprite stands 4.5 rows above the ball, so the ball sits
+  // about two thirds of the way down (never closer than 1.5 units to the
+  // bottom, never less than 5 units from the top). Only clamp to the hole's
+  // box when the box is taller than the view.
+  const ballUnit = clamp(unitsH * 0.66, Math.min(9.5, unitsH - 1.2), unitsH - 1.2);
+  let camY = focus.y + (unitsH / 2 - ballUnit) * u;
+  if (view === 'green') {
+    // keep the pin inside the window without pushing the sprite out
+    const minY = camY - viewH / 2, maxY = camY + viewH / 2;
+    if (hole.pin.y < minY + GREEN_MARGIN) camY -= (minY + GREEN_MARGIN - hole.pin.y);
+    else if (hole.pin.y > maxY - GREEN_MARGIN) camY += (hole.pin.y - (maxY - GREEN_MARGIN));
+    const topRoom = (focus.y - (camY - viewH / 2)) / u; // units above the ball
+    if (topRoom < 9.5) camY = focus.y - (viewH / 2 - 9.5 * u) + 0.01;
+  } else if (box.maxY - box.minY > viewH) camY = clamp(camY, box.minY + viewH / 2, box.maxY - viewH / 2);
+  const m = windowMap(tier, camX - viewW / 2, camY - viewH / 2, u, gutter);
+  const win = { minX: camX - viewW / 2, maxX: camX + viewW / 2, minY: camY - viewH / 2, maxY: camY + viewH / 2 };
+  const greenUnits = (2 * hole.green.ry) / u;
+  const info = `u=${u.toFixed(2)}y/col view=${view} golfer=${SPRITE_UNITS}u/${(SPRITE_UNITS * u).toFixed(0)}y green=${greenUnits.toFixed(1)}u/${(2 * hole.green.ry).toFixed(0)}y cam=(${camX.toFixed(0)},${camY.toFixed(0)}) target=(${target.x.toFixed(0)},${target.y.toFixed(0)}) win=${viewW.toFixed(0)}x${viewH.toFixed(0)}y`;
+  return { m, win, info, u, greenUnits };
+}
+
 function renderWorking(ctx) {
   const { st, hole, cad, cols, rows, now, sid, tier } = ctx;
+  const R = ctx.R;
+  const sprites = spriteSet(tier);
   const h = st.hole;
-  const hudRows = rows >= 10 ? 2 : 1;
-  const picRows = rows - hudRows;
+  // Row budget, top to bottom: frame top (title) + picture + frame bottom +
+  // scorecard (3 rows) + status chips. Each block has its own rows; nothing
+  // overlaps. Below nine rows the frame is dropped; below twelve, the card.
+  const framed = rows >= 9;
+  const cardRows = rows >= 12 && cols >= 60 ? 3 : 0;
+  const picRows = rows - 1 - cardRows - (framed ? 2 : 0);
+  const gutter = framed ? 1 : 0;
   const W = cols * tier.sx, H = picRows * tier.sy;
   const c = makeCanvas(W, H, R.rough);
   const view = chooseView(h, hole);
-  let m;
-  if (view === 'green') {
-    // One yard per unit, centred between ball and pin, zoomed out only when
-    // they would not both fit with room for the golfer sprite around the ball.
-    const ball = ballDisplay(h);
-    const cx = (ball.x + hole.pin.x) / 2, cy = (ball.y + hole.pin.y) / 2 - 1.5;
-    const unitsW = cols, unitsH = picRows * 2;
-    const u = Math.max(1, Math.abs(ball.x - hole.pin.x) / Math.max(8, unitsW - 14), Math.abs(ball.y - hole.pin.y) / Math.max(4, unitsH - 8));
-    const halfW = unitsW * u / 2, halfH = unitsH * u / 2;
-    m = makeMap(cols, picRows, { minX: cx - halfW, maxX: cx + halfW, minY: cy - halfH, maxY: cy + halfH }, 0, tier);
-  } else {
-    m = makeMap(cols, picRows, bounds(hole), 7, tier);
+  const cam = camera(view, h, hole, cols, picRows, gutter, tier);
+  const dbg = {};
+  drawGround(c, hole, cam.m, R, ctx.seedInt);
+  if (cols >= 60 && picRows >= 4) {
+    const g = golferWorld(h);
+    drawMinimap(c, hole, h, cam.m, R, tier, cam.win, cam.m.px(g.x));
   }
-  drawCourse(c, hole, m, sid + ':' + hole.no);
-  drawPlay(c, h, hole, m, cad, now, tier);
+  const box = drawPlay(c, h, hole, cam.m, cad, now, tier, R, sprites, dbg);
+  if (framed) for (let r = 0; r < picRows; r++) { label(c, 0, r, '│', R.frame, R.frameBg); label(c, cols - 1, r, '│', R.frame, R.frameBg); }
 
-  const textRows = [];
+  const pre = [], textRows = [];
   const toPar = ctx.toPar, thru = ctx.thru;
   const cur = h.shots[h.shots.length - 1];
-  const ball = h.ball;
-  const dPin = Math.round(dist(ball, hole.pin));
-  const distText = (h.lie === 'green' || (h.lie === 'fringe' && dPin < 12)) ? `${Math.round(dPin * 3)}ft` : `${dPin}y`;
-  const shotLabel = h.phase === 'tee' ? 'on the tee' : h.phase === 'holed' ? scoreName(hole.par, h.strokes).toLowerCase() + ` ${h.strokes}` : (h.phase === 'flight' || h.phase === 'result') && cur ? `${clubName(cur.club)} · ${cur.label ? cur.label.toLowerCase() : 'in play'}` : `${distText} to pin`;
-  const wind = hole.wind.speed ? `wind ${hole.wind.speed} ${windArrow(hole)}` : 'calm';
-  const strokeNo = h.strokes + (h.phase === 'flight' || h.phase === 'result' || h.phase === 'holed' ? 0 : 1);
-  const hudA = cols >= 90 ? [
-    { t: `H${hole.no} `, fg: R.yellow },
-    { t: `${hole.name} · par ${hole.par} · ${hole.length}y `, fg: R.white },
-    { t: `| ${shotLabel} `, fg: R.white },
-    { t: `| stroke ${strokeNo} `, fg: R.gray },
-    { t: `| ${wind} `, fg: R.waterLight },
-    { t: `| ${toParText(toPar)} thru ${thru}`, fg: toPar < 0 ? R.yellow : toPar > 0 ? R.red : R.white },
-  ] : [
-    { t: `H${hole.no} `, fg: R.yellow },
-    { t: `par ${hole.par} ${hole.length}y `, fg: R.white },
-    { t: `| ${shotLabel} `, fg: R.white },
-    { t: `| s${strokeNo} `, fg: R.gray },
-    { t: `| ${wind.replace('wind ', 'w')} `, fg: R.waterLight },
-    { t: `| ${toParText(toPar)} thru ${thru}`, fg: toPar < 0 ? R.yellow : toPar > 0 ? R.red : R.white },
-  ];
-  textRows.push(hudA);
-  if (hudRows === 2) {
-    const strip = [];
-    for (let i = 0; i < 18; i++) {
-      const sc = st.scores[i];
-      const isCur = i === st.holeIdx;
-      let t = sc ? String(sc.s) : '-';
-      let fg = R.gray;
-      if (sc) { const d = sc.s - sc.par; fg = d < 0 ? R.yellow : d === 0 ? R.white : d === 1 ? R.gray : R.red; }
-      if (isCur) { t = String(h.strokes || '·'); fg = R.white; }
-      strip.push({ t, fg, bg: isCur ? R.navy : -1 });
-      strip.push({ t: i === 8 ? '  ' : ' ', fg: R.gray });
-    }
-    strip.push({ t: `| ${ctx.strokesTotal} (${toParText(toPar)}) `, fg: R.white });
-    if (cols >= 110) {
-      const ev = h.phase === 'tee' ? 'tee' : cur ? (cur.holed ? 'holed' : cur.lie === 'green' ? 'green' : cur.lie) : 'tee';
-      strip.push({ t: `| ${cad.name}: ${quip(sid, hole.no, h.strokes, ev)}`, fg: R.gray });
-    }
-    textRows.push(strip);
+  const ev = h.phase === 'tee' ? 'tee' : cur ? (cur.holed ? 'holed' : cur.lie === 'green' ? 'green' : cur.lie) : 'tee';
+  if (framed) {
+    const title = ` H${String(hole.no).padStart(2, '0')} ${hole.name} · par ${hole.par} · ${hole.length}y `;
+    const fill = Math.max(0, cols - 2 - 2 - title.length);
+    pre.push([{ t: '┌─', fg: R.frame }, { t: title, fg: R.text }, { t: '─'.repeat(fill) + '─┐', fg: R.frame }]);
+    textRows.push([{ t: '└' + '─'.repeat(cols - 2) + '┘', fg: R.frame }]);
   }
-  return { cols, canvas: c, textRows };
-}
-
-// Idle strip, drawn at half-block resolution and lifted to the tier.
-function renderIdle(ctx) {
-  const { st, hole, cad, cols, now, sid, tier } = ctx;
-  const rows = 3;
-  const W = cols, H = rows * 2;
-  const c = makeCanvas(W, H, TRANSPARENT);
-  const sceneW = Math.min(44, Math.floor(W * 0.5));
-  const idle = st.idle || { phase: 'wait', pt: 0 };
-  const walkFrame = Math.floor(now / 500) % 2;
-  if (idle.phase === 'holeout') {
-    fillRect(c, 0, 0, sceneW, H, R.green);
-    fillRect(c, 0, 0, sceneW, 1, R.fringe);
-    const cupX = Math.floor(sceneW * 0.75), cupY = 4;
-    blit(c, FLAG, cupX, cupY - 2, { w: R.white, r: R.red, k: R.cup });
-    const t = clamp(idle.pt / 2200, 0, 1);
-    const bx = Math.round(6 + (cupX - 6) * t);
-    if (t < 1) set(c, bx, cupY, R.white);
-    for (let x = 6; x < bx; x += 2) set(c, x, cupY, R.white);
-    blit(c, t < 1 ? GOLFER.address : GOLFER.cheer, 1, cupY - 4, golferMap(cad));
-  } else {
-    fillRect(c, 0, 4, sceneW, 1, R.fairway);
-    fillRect(c, 0, 5, sceneW, 1, R.rough);
-    const moving = idle.phase === 'walk';
-    const scroll = moving ? Math.floor(now / 400) : 0;
-    const cloudScroll = moving ? Math.floor(now / 900) : 0;
-    const period = 23;
-    for (let k = -1; k < sceneW / period + 2; k++) {
-      const tx = k * period + 9 - (scroll % period);
-      if (tx > -6 && tx < sceneW) blit(c, TREE_SIDE, tx, 0, { t: R.tree, o: R.brown });
-      const cx2 = k * 31 + 4 - (cloudScroll % 31);
-      if (cx2 > -7 && cx2 < sceneW) blit(c, CLOUD, cx2, 0, { w: R.gray });
-    }
-    if (cad.transport === 'cart' && moving) {
-      blit(c, walkFrame ? CART.roll1 : CART.roll2, 4, 0, { C: cad.cart, g: R.gray, h: cad.golfer.hat ? R.white : cad.golfer.skin, k: R.outline });
-    } else if (moving) {
-      blit(c, walkFrame ? CADDIE.walk1 : CADDIE.walk2, 2, 0, { b: cad.bag, h: cad.hat ? R.white : cad.skin, s: cad.shirt, p: R.navy });
-      blit(c, walkFrame ? GOLFER.walk2 : GOLFER.walk1, 11, 0, golferMap(cad));
-    } else {
-      set(c, 18, 4, R.white); set(c, 22, 4, R.white);
-      blit(c, CADDIE.stand, 2, 0, { b: cad.bag, h: cad.hat ? R.white : cad.skin, s: cad.shirt, p: R.navy });
-      const f = [GOLFER.address, GOLFER.back, GOLFER.through][Math.floor(now / 700) % 3];
-      blit(c, f, 11, 0, golferMap(cad));
-    }
+  if (cardRows) for (const row of scorecard({ st, pars: coursePars(sid), cols, R })) textRows.push(row);
+  textRows.push(statusRow({ hole, h, cols, R, toPar, thru, cad, framed, quip: cols >= 120 ? quip(sid, hole.no, h.strokes, ev) : null }));
+  const spriteCells = `${Math.ceil(box.w / tier.sx)}x${Math.ceil(box.h / tier.sy)}cells`;
+  if (ctx.debug) {
+    const extra = dbg.spriteClamped ? ` sprite-clamped=${dbg.spriteClamped}` : '';
+    textRows.push([{ t: `dbg ${cam.info} sprite=(${box.x},${box.y},${box.w}x${box.h}px,${spriteCells}) pic=${cols}x${picRows} tier=${tier.name}${extra}`, fg: R.textDim }]);
   }
-  for (let y = 0; y < H; y++) for (let x = sceneW; x < W; x++) c.px[y * W + x] = TRANSPARENT;
-
-  const col = sceneW + 2;
-  const room = Math.max(0, W - col);
-  const fit = s => (s.length > room ? s.slice(0, Math.max(0, room - 1)) + '…' : s);
-  const toPar = ctx.toPar;
-  const line1 = `Hole ${st.holeIdx + 1} of 18 · ${toParText(toPar)} thru ${ctx.thru} · round ${st.round}`;
-  let line2, line3;
-  if (idle.phase === 'holeout' && st.last) {
-    line2 = `${scoreName(st.last.par, st.last.strokes)} ${st.last.strokes} on the par ${st.last.par} ${ordinal(st.last.no)}`;
-    const over = st.last.strokes - st.last.par;
-    line3 = `${cad.name}: ${quip(sid, st.last.no, st.last.strokes, over <= 0 ? 'holed' : over === 1 ? 'bogey' : 'bad')}`;
-  } else if (idle.phase === 'round' && st.lastRound) {
-    line2 = `Round ${st.lastRound.round} complete: ${st.lastRound.total} (${toParText(st.lastRound.toPar)})`;
-    line3 = `${cad.name}: ${quip(sid, 0, st.lastRound.total, 'walk')}`;
-  } else if (idle.phase === 'walk') {
-    line2 = cad.transport === 'cart' ? `riding to the ${ordinal(st.holeIdx + 1)} tee with ${cad.name}` : `walking to the ${ordinal(st.holeIdx + 1)} tee, ${cad.name} on the bag`;
-    line3 = st.last ? `last: ${scoreName(st.last.par, st.last.strokes).toLowerCase()} on ${st.last.no} · ${cad.name}: ${quip(sid, st.holeIdx, 0, cad.transport === 'cart' ? 'cart' : 'walk')}` : `${cad.name}: ${quip(sid, st.holeIdx, 0, 'walk')}`;
-  } else {
-    line2 = `waiting on the ${ordinal(st.holeIdx + 1)} tee · ${hole.name} · par ${hole.par} · ${hole.length}y`;
-    line3 = `${cad.name}: ${quip(sid, st.holeIdx + 1, 0, 'wait')}`;
-  }
-  if (room > 8) {
-    label(c, col, 0, fit(line1), R.white);
-    label(c, col, 1, fit(line2), R.gray);
-    label(c, col, 2, fit(line3), R.gray);
-  }
-  const lifted = tier.sx === 1 && tier.sy === 2 ? c : upscale(c, tier.sx, tier.sy / 2);
-  return { cols, canvas: lifted, textRows: [] };
-}
-
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  ctx.trace = cam.info + ' sprite=' + spriteCells;
+  if (dbg.spriteClamped) ctx.violation = `sprite clamped ${dbg.spriteClamped} pic=${cols}x${picRows} ${cam.info}`;
+  return { cols, pre, canvas: c, textRows };
 }
 
 export function renderScene(ctx) {
   if (ctx.cols < 40) {
     const h = ctx.st.hole;
-    return { cols: ctx.cols, canvas: null, textRows: [[{ t: `golf H${h.no} par ${h.par} ${toParText(ctx.toPar)} thru ${ctx.thru}`, fg: R.white }]] };
+    return { cols: ctx.cols, pre: [], canvas: null, textRows: [[{ t: `golf H${h.no} par ${h.par} ${ctx.toPar === 0 ? 'E' : ctx.toPar > 0 ? '+' + ctx.toPar : ctx.toPar} thru ${ctx.thru}`, fg: ctx.R.text }]] };
   }
-  return ctx.mode === 'WORKING' ? renderWorking(ctx) : renderIdle(ctx);
+  // Mid-hole idle (the shot settling, or the golfer standing at the ball)
+  // keeps the full hole view; only between-holes idle collapses to the strip.
+  const idlePhase = ctx.st.idle ? ctx.st.idle.phase : null;
+  if (ctx.mode === 'WORKING' || idlePhase === 'settle' || idlePhase === 'stand') return renderWorking(ctx);
+  return renderIdle(ctx, { gmap: golferMap(ctx.cad, ctx.R), cmap: caddieMap(ctx.cad, ctx.R) });
 }

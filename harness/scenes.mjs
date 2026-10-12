@@ -16,6 +16,9 @@ import { newHole, takeShot } from '../src/sim/golf.mjs';
 
 const cols = Number(process.argv[2]) || 100;
 const lines = Number(process.argv[3]) || 30;
+// Every captured moment is also rendered at these extra sizes/tiers with the
+// same clock, so the state does not advance between renders.
+const EXTRA = [[80, 24, 'halfblock'], [120, 36, 'halfblock'], [160, 40, 'halfblock'], [100, 30, 'sextant'], [160, 40, 'sextant']];
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const ENTRY = path.join(ROOT, 'src', 'statusline.mjs');
 const OUT = path.join(ROOT, 'harness', 'frames');
@@ -47,23 +50,35 @@ const SEEDS = {
   cart: findSeed((p, c) => c.transport === 'cart' && p.shots.length <= 6, 'cart seed'),
 };
 
-function tick(home, sid, mode, now) {
+let current = null; // {home, sid, now} of the tick being classified
+function render(home, sid, mode, now, c, l, tier) {
   const input = JSON.stringify({ session_id: sid, model: { display_name: 'Scene' } });
-  const out = execFileSync('node', [ENTRY], {
+  return execFileSync('node', [ENTRY], {
     input, encoding: 'utf8',
-    env: { ...process.env, GOLF_HOME: home, GOLF_MODE: mode, GOLF_NOW: String(now), COLUMNS: String(cols), LINES: String(lines) },
+    env: { ...process.env, CCGOLF_HOME: home, CCGOLF_MODE: mode, CCGOLF_NOW: String(now), COLUMNS: String(c), LINES: String(l), CCGOLF_GLYPHS: tier || 'halfblock', CCGOLF_DEBUG: '1' },
   });
+}
+function tick(home, sid, mode, now) {
+  const out = render(home, sid, mode, now, cols, lines, 'halfblock');
   const st = JSON.parse(fs.readFileSync(path.join(home, 'state', sid + '.json'), 'utf8'));
+  current = { home, sid, mode, now };
   return { out, st };
 }
 
 const found = {};
+function writeFrame(name, out, suffix) {
+  const txt = path.join(OUT, `scene-${name}${suffix}.txt`);
+  fs.writeFileSync(txt, out);
+  try { execFileSync('node', [path.join(ROOT, 'harness', 'png.mjs'), txt, path.join(OUT, `scene-${name}${suffix}.png`), '--scale', '8']); } catch {}
+}
 function save(name, out) {
   if (found[name]) return;
   found[name] = true;
-  const txt = path.join(OUT, `scene-${name}.txt`);
-  fs.writeFileSync(txt, out);
-  try { execFileSync('node', [path.join(ROOT, 'harness', 'png.mjs'), txt, path.join(OUT, `scene-${name}.png`), '6']); } catch {}
+  writeFrame(name, out, '');
+  // Same moment at the other sizes: the clock does not move, so neither does the state.
+  if (current) for (const [c, l, tier] of EXTRA) {
+    try { writeFrame(name, render(current.home, current.sid, current.mode, current.now, c, l, tier), `-${c}-${tier}`); } catch {}
+  }
   console.log('captured', name);
 }
 

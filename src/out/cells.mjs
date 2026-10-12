@@ -74,11 +74,40 @@ function quantizeCell(sub, n, D, scratchCounts) {
   return { mask, fg: a, bg: b };
 }
 
+function renderTextRow(segs, cols, FG, BG) {
+  // Fit on cell boundaries first, colour second.
+  let used = 0;
+  const fitted = [];
+  for (const s of segs) {
+    if (used >= cols) break;
+    let t = sanitize(s.t);
+    if (used + t.length > cols) t = t.slice(0, cols - used);
+    used += t.length;
+    fitted.push({ t, fg: s.fg, bg: s.bg });
+  }
+  let out = '';
+  let curFg = null, curBg = null;
+  for (const s of fitted) {
+    const fg = s.fg === undefined || s.fg < 0 ? null : s.fg;
+    const bg = s.bg === undefined || s.bg < 0 ? null : s.bg;
+    if (fg !== curFg || bg !== curBg) {
+      const p = [];
+      if (fg !== curFg) { p.push(fg === null ? '39' : FG[fg]); curFg = fg; }
+      if (bg !== curBg) { p.push(bg === null ? '49' : BG[bg]); curBg = bg; }
+      out += ESC + p.join(';') + 'm';
+    }
+    out += s.t;
+  }
+  return out + RESET;
+}
+
 export function renderCells(frame, palette, mode = 'truecolor', tier) {
   const { fg: FG, bg: BG } = sgrTables(palette, mode);
   const D = labDistances(palette);
   const cols = frame.cols;
   const rows = [];
+
+  for (const segs of frame.pre || []) rows.push(renderTextRow(segs, cols, FG, BG));
 
   if (frame.canvas) {
     const c = frame.canvas;
@@ -134,32 +163,7 @@ export function renderCells(frame, palette, mode = 'truecolor', tier) {
     }
   }
 
-  for (const segs of frame.textRows) {
-    // Fit on cell boundaries first, colour second.
-    let used = 0;
-    const fitted = [];
-    for (const s of segs) {
-      if (used >= cols) break;
-      let t = sanitize(s.t);
-      if (used + t.length > cols) t = t.slice(0, cols - used);
-      used += t.length;
-      fitted.push({ t, fg: s.fg, bg: s.bg });
-    }
-    let out = '';
-    let curFg = null, curBg = null;
-    for (const s of fitted) {
-      const fg = s.fg === undefined || s.fg < 0 ? null : s.fg;
-      const bg = s.bg === undefined || s.bg < 0 ? null : s.bg;
-      if (fg !== curFg || bg !== curBg) {
-        const p = [];
-        if (fg !== curFg) { p.push(fg === null ? '39' : FG[fg]); curFg = fg; }
-        if (bg !== curBg) { p.push(bg === null ? '49' : BG[bg]); curBg = bg; }
-        out += ESC + p.join(';') + 'm';
-      }
-      out += s.t;
-    }
-    rows.push(out + RESET);
-  }
+  for (const segs of frame.textRows) rows.push(renderTextRow(segs, cols, FG, BG));
   return rows.join('\n');
 }
 
