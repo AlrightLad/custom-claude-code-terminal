@@ -30,7 +30,12 @@ function intEnv(name, dflt) {
 const marks = [];
 const mark = name => { if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) marks.push([name, Date.now() - T0]); };
 
+const off = v => v === undefined || /^(0|false|no|off)$/i.test(v);
+
 function main() {
+  // Global kill switch: one place to silence every golfer in every session
+  // under load, no per-session editing. Prints an empty status line and exits.
+  if (!off(process.env.CCGOLF_DISABLE)) { process.stdout.write('\n'); return; }
   let raw = '';
   try { raw = fs.readFileSync(0, 'utf8'); } catch {}
   mark('stdin');
@@ -56,6 +61,10 @@ function main() {
   const now = Number(envVar('NOW')) || Date.now();
   let st = loadState(home, sid);
   if (!st || st.v !== STATE_VERSION || st.sid !== sid || !st.hole) st = newState(sid, now);
+  // Signature of the meaningful state (everything but the clock) so a frozen
+  // idle frame does not rewrite the file every second across N sessions.
+  const volatile = (k, v) => (k === 't' || k === 'act' || k === '_w') ? undefined : v;
+  const loadedSig = JSON.stringify(st, volatile);
   const dt = clamp(now - (st.t || now), 0, 2500) * timeScale;
   st.t = now;
   mark('state');
@@ -76,9 +85,9 @@ function main() {
   const roster = readRoster(home, sid);
   if (roster.length || (st.agents && Object.keys(st.agents).length)) stepAgents(st, hole, roster, mode, dt, now);
   mark('sim');
-  const sandbox = /^(test-|bench|scene-|demo)/.test(sid) || envVar('NO_CAREER');
+  const sandbox = /^(test-|bench|scene-|demo|perf|canon-|vd)/.test(sid) || envVar('NO_CAREER');
   if (events.length && !sandbox) {
-    try { updateCareer(home, c => { for (const ev of events) applyCareer(c, ev, sid, now); }); } catch {}
+    try { updateCareer(home, sid, c => { for (const ev of events) applyCareer(c, ev, sid, now); }); } catch {}
   }
 
   const cad = genCaddie(sid);
@@ -101,13 +110,22 @@ function main() {
   }
   const out = renderCells(frame, pal, colorMode, tier);
   mark('cells');
-  saveState(home, sid, st);
+  // Persist only when the meaningful state changed, or once every 8s to keep
+  // the clock fresh. A frozen idle golfer across 8 sessions then costs almost
+  // no disk churn instead of a write every second.
+  const changed = JSON.stringify(st, volatile) !== loadedSig;
+  const didWrite = changed || now - (st._w || 0) > 8000;
+  if (didWrite) { st._w = now; saveState(home, sid, st); }
   mark('save');
   process.stdout.write(out + '\n');
+  globalThis.__golfWrote = didWrite ? 1 : 0;
 
   if (envVar('TRACE')) {
     const detail = marks.map(([n, ms]) => `${n}=${ms}`).join(' ');
     try { fs.appendFileSync(path.join(home, 'trace.log'), `${now}\t${sid.slice(0, 8)}\t${st.mode}\t${st.hole.phase}\tbody=${Date.now() - T0}ms\tprocess=${Math.round(process.uptime() * 1000)}ms\t${detail}\t${ctx.trace || ''}\n`); } catch {}
+    // Per-process resource line for docs/PERF.md measurement (stderr, not the status line).
+    const cpu = process.cpuUsage();
+    process.stderr.write(`PERF rss=${process.memoryUsage().rss} cpuUserUs=${cpu.user} cpuSysUs=${cpu.system} body=${Date.now() - T0} wrote=${globalThis.__golfWrote ?? 1}\n`);
   }
 }
 

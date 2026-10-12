@@ -89,7 +89,12 @@ export function step(st, hole, mode, dt, now) {
   if (!st.idle) st.idle = { phase: 'wait', pt: 0 };
   const h = st.hole;
   const idle = st.idle;
-  idle.pt += dt;
+  // 'stand' (waiting mid-hole) and 'wait' (on the tee) are truly frozen — their
+  // breathing animation is driven by wall-clock `now`, not pt — so pt does not
+  // advance and the state stays byte-identical. That lets the entry skip the
+  // per-second state write for a session that is just sitting idle, which is
+  // the common case across many open terminals.
+  if (idle.phase !== 'stand' && idle.phase !== 'wait') idle.pt += dt;
   if (idle.phase === 'settle') {
     // Let the current shot land and roll out; freeze before the next swing.
     advanceHole(h, hole, dt, sid, st.round, true);
