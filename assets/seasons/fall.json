@@ -1,0 +1,17 @@
+{
+  "name": "fall",
+  "notes": "Autumn: russet and gold treeline, dormant yellowing turf, leaves blowing across the fairway, long shadows. Sweater and vest.",
+  "palette": {
+    "roughDark": "#5e6a2c", "rough": "#667230", "roughLight": "#6e7a34",
+    "fairwayDark": "#9aa84c", "fairway": "#a1af50", "fairwayLight": "#abb856",
+    "fringe": "#bcc864", "greenDark": "#c6d070", "green": "#cfd978", "greenLight": "#dae384",
+    "tree": "#a8522a", "treeDark": "#6a3418", "treeLight": "#e0a040", "trunk": "#5a3a1e",
+    "sand": "#efe2bc", "sandLip": "#cfbd8a",
+    "sky": "#14100c", "frame": "#b07a30"
+  },
+  "golden": { "fairway": "#c9b050", "fairwayLight": "#d4bc58", "fairwayDark": "#bda64a", "tree": "#c45a20", "sky": "#301408", "frame": "#d08a30" },
+  "weather": { "rain": 0.2, "overcast": 0.35, "leaves": 0.7, "longShadows": true },
+  "sim": { "carry": 0.99, "roll": 0.9 },
+  "wardrobe": { "hat": "cap", "vest": true },
+  "props": { "birds": 0.3, "benches": true, "ballWasher": true, "rakes": true }
+}

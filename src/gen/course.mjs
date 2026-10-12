@@ -7,6 +7,7 @@
 // Holes dogleg (single or double), fairways breathe in width with a pinch at
 // the driver landing zone, water sits where it is in play, and greens can be
 // elevated or two-tiered. Names are derived from the features a hole has.
+import fs from 'node:fs';
 import { rngFor, clamp, pick, range } from '../util/rng.mjs';
 
 const PAR_TEMPLATE = [4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 3, 4, 5, 4, 4, 3, 5, 4]; // par 72
@@ -281,11 +282,16 @@ export function bounds(hole) {
 
 // ---------------------------------------------------------------- caddie ---
 
-const FIRST = ['Ada', 'Alfie', 'Amos', 'Archie', 'Bea', 'Benji', 'Billy', 'Bram', 'Cal', 'Cass', 'Cliff', 'Dex', 'Dot',
+// Caddie names and remarks are editable data (assets/text/caddies.json); the
+// built-ins below are the fallback if that file is missing or malformed.
+const CADDIES_URL = new URL('../../assets/text/caddies.json', import.meta.url);
+let CADDIE_DATA = null;
+try { CADDIE_DATA = JSON.parse(fs.readFileSync(CADDIES_URL, 'utf8')); } catch {}
+const FIRST = (CADDIE_DATA && CADDIE_DATA.first && CADDIE_DATA.first.length) ? CADDIE_DATA.first : ['Ada', 'Alfie', 'Amos', 'Archie', 'Bea', 'Benji', 'Billy', 'Bram', 'Cal', 'Cass', 'Cliff', 'Dex', 'Dot',
   'Eddie', 'Elsie', 'Ernie', 'Fern', 'Finn', 'Flo', 'Frankie', 'Gus', 'Hal', 'Hattie', 'Ike', 'Ivy', 'Jack', 'Jo',
   'Kit', 'Lou', 'Mack', 'Mae', 'Max', 'Milo', 'Moe', 'Nell', 'Ned', 'Ollie', 'Otis', 'Pat', 'Pip', 'Ray', 'Reg',
   'Rosie', 'Sam', 'Sid', 'Tam', 'Ted', 'Tess', 'Toby', 'Vic', 'Wally', 'Wes', 'Win'];
-const LAST = ['Abbott', 'Baird', 'Barlow', 'Blake', 'Boyd', 'Burke', 'Calder', 'Clyde', 'Crane', 'Dunn', 'Ferris',
+const LAST = (CADDIE_DATA && CADDIE_DATA.last && CADDIE_DATA.last.length) ? CADDIE_DATA.last : ['Abbott', 'Baird', 'Barlow', 'Blake', 'Boyd', 'Burke', 'Calder', 'Clyde', 'Crane', 'Dunn', 'Ferris',
   'Finch', 'Forbes', 'Grant', 'Hale', 'Hardy', 'Hayes', 'Holt', 'Irwin', 'Kerr', 'Lamb', 'Logan', 'Lowe', 'Marsh',
   'Moss', 'Munro', 'Nash', 'Oakes', 'Pike', 'Quinn', 'Rees', 'Ross', 'Shaw', 'Slade', 'Stone', 'Tate', 'Todd',
   'Vance', 'Wade', 'Ward', 'Webb', 'Wren', 'York'];
@@ -329,7 +335,9 @@ const QUIPS = {
   wait: ['Whenever you are ready.', 'Take your time.', 'Group ahead is slow.', 'Stretch it out.', 'No rush.'],
 };
 
+const REMARKS = (CADDIE_DATA && CADDIE_DATA.remarks) ? CADDIE_DATA.remarks : QUIPS;
+
 export function quip(sid, holeNo, n, event) {
-  const list = QUIPS[event] || QUIPS.walk;
+  const list = (REMARKS[event] && REMARKS[event].length) ? REMARKS[event] : (REMARKS.walk || QUIPS.walk);
   return pick(rngFor(sid, 'quip', holeNo, n, event), list);
 }

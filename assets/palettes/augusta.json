@@ -2,63 +2,243 @@
   "name": "augusta",
   "notes": "Lush parkland. Built on a luminance ladder, darkest to lightest: water < trees < rough < fairway < green < sand < highlight. harness/greyscale.mjs asserts the ladder. Roles name colours by name so a theme can remap them freely.",
   "colors": [
-    { "name": "black",        "hex": "#000000" },
-    { "name": "sky",          "hex": "#0b0d12" },
-    { "name": "waterDeep",    "hex": "#081438" },
-    { "name": "water",        "hex": "#0c1e52" },
-    { "name": "waterLight",   "hex": "#3a6ad0" },
-    { "name": "treeDark",     "hex": "#0e2a12" },
-    { "name": "tree",         "hex": "#1a4420" },
-    { "name": "treeLight",    "hex": "#27602a" },
-    { "name": "roughDark",    "hex": "#306a26" },
-    { "name": "rough",        "hex": "#357228" },
-    { "name": "roughLight",   "hex": "#3a7a2b" },
-    { "name": "fairwayDark",  "hex": "#62a83e" },
-    { "name": "fairway",      "hex": "#66ad40" },
-    { "name": "fairwayLight", "hex": "#6fb847" },
-    { "name": "fringe",       "hex": "#8ccb58" },
-    { "name": "greenDark",    "hex": "#9ad862" },
-    { "name": "green",        "hex": "#a8e26c" },
-    { "name": "greenLight",   "hex": "#b8ec7c" },
-    { "name": "sandLip",      "hex": "#cdb57a" },
-    { "name": "sand",         "hex": "#f0e2b4" },
-    { "name": "white",        "hex": "#fafafa" },
-    { "name": "flag",         "hex": "#e03c3c" },
-    { "name": "skin",         "hex": "#f1c9a1" },
-    { "name": "skinDark",     "hex": "#8d5a2b" },
-    { "name": "trace",        "hex": "#ffd84a" },
-    { "name": "gray",         "hex": "#9a9a9a" },
-    { "name": "navy",         "hex": "#26338f" },
-    { "name": "trunk",        "hex": "#6b4320" },
-    { "name": "frame",        "hex": "#4f8a3a" },
-    { "name": "chipGreen",    "hex": "#1f4a26" },
-    { "name": "chipBlue",     "hex": "#243a78" },
-    { "name": "chipBrown",    "hex": "#5a3a1a" },
-    { "name": "chipGray",     "hex": "#3a3a3a" },
-    { "name": "cartBody",     "hex": "#e8e8e8" },
-    { "name": "bagRed",       "hex": "#b02a2a" },
-    { "name": "shirtBlue",    "hex": "#3a7bd5" },
-    { "name": "shirtYellow",  "hex": "#f2d23a" },
-    { "name": "shirtWhite",   "hex": "#f0f0f0" },
-    { "name": "shirtRed",     "hex": "#d8403a" },
-    { "name": "shirtPink",    "hex": "#e989b5" },
-    { "name": "pantsKhaki",   "hex": "#c9b98a" }
+    {
+      "name": "black",
+      "hex": "#000000"
+    },
+    {
+      "name": "sky",
+      "hex": "#0b0d12"
+    },
+    {
+      "name": "waterDeep",
+      "hex": "#081438"
+    },
+    {
+      "name": "water",
+      "hex": "#0c1e52"
+    },
+    {
+      "name": "waterLight",
+      "hex": "#3a6ad0"
+    },
+    {
+      "name": "treeDark",
+      "hex": "#0e2a12"
+    },
+    {
+      "name": "tree",
+      "hex": "#1a4420"
+    },
+    {
+      "name": "treeLight",
+      "hex": "#27602a"
+    },
+    {
+      "name": "roughDark",
+      "hex": "#306a26"
+    },
+    {
+      "name": "rough",
+      "hex": "#357228"
+    },
+    {
+      "name": "roughLight",
+      "hex": "#3a7a2b"
+    },
+    {
+      "name": "fairwayDark",
+      "hex": "#62a83e"
+    },
+    {
+      "name": "fairway",
+      "hex": "#66ad40"
+    },
+    {
+      "name": "fairwayLight",
+      "hex": "#6fb847"
+    },
+    {
+      "name": "fringe",
+      "hex": "#8ccb58"
+    },
+    {
+      "name": "greenDark",
+      "hex": "#9ad862"
+    },
+    {
+      "name": "green",
+      "hex": "#a8e26c"
+    },
+    {
+      "name": "greenLight",
+      "hex": "#b8ec7c"
+    },
+    {
+      "name": "sandLip",
+      "hex": "#cdb57a"
+    },
+    {
+      "name": "sand",
+      "hex": "#f0e2b4"
+    },
+    {
+      "name": "white",
+      "hex": "#fafafa"
+    },
+    {
+      "name": "ball",
+      "hex": "#fafafa"
+    },
+    {
+      "name": "flag",
+      "hex": "#e03c3c"
+    },
+    {
+      "name": "skin",
+      "hex": "#f1c9a1"
+    },
+    {
+      "name": "skinDark",
+      "hex": "#8d5a2b"
+    },
+    {
+      "name": "trace",
+      "hex": "#ffd84a"
+    },
+    {
+      "name": "gray",
+      "hex": "#9a9a9a"
+    },
+    {
+      "name": "navy",
+      "hex": "#26338f"
+    },
+    {
+      "name": "trunk",
+      "hex": "#6b4320"
+    },
+    {
+      "name": "frame",
+      "hex": "#4f8a3a"
+    },
+    {
+      "name": "chipGreen",
+      "hex": "#1f4a26"
+    },
+    {
+      "name": "chipBlue",
+      "hex": "#243a78"
+    },
+    {
+      "name": "chipBrown",
+      "hex": "#5a3a1a"
+    },
+    {
+      "name": "chipGray",
+      "hex": "#3a3a3a"
+    },
+    {
+      "name": "cartBody",
+      "hex": "#e8e8e8"
+    },
+    {
+      "name": "bagRed",
+      "hex": "#b02a2a"
+    },
+    {
+      "name": "shirtBlue",
+      "hex": "#3a7bd5"
+    },
+    {
+      "name": "shirtYellow",
+      "hex": "#f2d23a"
+    },
+    {
+      "name": "shirtWhite",
+      "hex": "#f0f0f0"
+    },
+    {
+      "name": "shirtRed",
+      "hex": "#d8403a"
+    },
+    {
+      "name": "shirtPink",
+      "hex": "#e989b5"
+    },
+    {
+      "name": "pantsKhaki",
+      "hex": "#c9b98a"
+    }
   ],
   "roles": {
-    "sky": "sky", "outline": "black", "cup": "black", "shadow": "treeDark",
-    "waterDeep": "waterDeep", "water": "water", "waterLight": "waterLight",
-    "treeDark": "treeDark", "tree": "tree", "treeLight": "treeLight", "trunk": "trunk",
-    "roughDark": "roughDark", "rough": "rough", "roughLight": "roughLight",
-    "fairwayDark": "fairwayDark", "fairway": "fairway", "fairwayLight": "fairwayLight",
-    "fringe": "fringe", "greenDark": "greenDark", "green": "green", "greenLight": "greenLight",
-    "sand": "sand", "sandLip": "sandLip", "tee": "fairwayLight",
-    "ball": "white", "pole": "white", "stake": "white", "flag": "flag",
-    "trace": "trace", "traceOld": "gray", "club": "gray",
-    "text": "white", "textDim": "gray", "accent": "trace", "bad": "flag", "good": "greenLight", "info": "waterLight",
-    "frame": "frame", "frameBg": "sky", "chipA": "chipGreen", "chipB": "chipBlue", "chipC": "chipBrown", "chipD": "chipGray",
-    "skin": "skin", "skinDark": "skinDark", "navy": "navy", "white": "white", "gray": "gray", "cart": "cartBody",
-    "shirts": ["shirtBlue", "shirtYellow", "shirtWhite", "shirtRed", "shirtPink"],
-    "pants": ["navy", "pantsKhaki", "white"],
-    "bags": ["bagRed", "navy", "black", "trunk", "gray"]
+    "sky": "sky",
+    "outline": "black",
+    "cup": "black",
+    "shadow": "treeDark",
+    "waterDeep": "waterDeep",
+    "water": "water",
+    "waterLight": "waterLight",
+    "treeDark": "treeDark",
+    "tree": "tree",
+    "treeLight": "treeLight",
+    "trunk": "trunk",
+    "roughDark": "roughDark",
+    "rough": "rough",
+    "roughLight": "roughLight",
+    "fairwayDark": "fairwayDark",
+    "fairway": "fairway",
+    "fairwayLight": "fairwayLight",
+    "fringe": "fringe",
+    "greenDark": "greenDark",
+    "green": "green",
+    "greenLight": "greenLight",
+    "sand": "sand",
+    "sandLip": "sandLip",
+    "tee": "fairwayLight",
+    "ball": "ball",
+    "pole": "white",
+    "stake": "white",
+    "flag": "flag",
+    "trace": "trace",
+    "traceOld": "gray",
+    "club": "gray",
+    "text": "white",
+    "textDim": "gray",
+    "accent": "trace",
+    "bad": "flag",
+    "good": "greenLight",
+    "info": "waterLight",
+    "frame": "frame",
+    "frameBg": "sky",
+    "chipA": "chipGreen",
+    "chipB": "chipBlue",
+    "chipC": "chipBrown",
+    "chipD": "chipGray",
+    "skin": "skin",
+    "skinDark": "skinDark",
+    "navy": "navy",
+    "white": "white",
+    "gray": "gray",
+    "cart": "cartBody",
+    "shirts": [
+      "shirtBlue",
+      "shirtYellow",
+      "shirtWhite",
+      "shirtRed",
+      "shirtPink"
+    ],
+    "pants": [
+      "navy",
+      "pantsKhaki",
+      "white"
+    ],
+    "bags": [
+      "bagRed",
+      "navy",
+      "black",
+      "trunk",
+      "gray"
+    ]
   }
 }

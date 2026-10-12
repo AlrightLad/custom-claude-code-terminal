@@ -2,27 +2,55 @@
 // Pure: every function takes the state it mutates plus the hole geometry.
 // Shot outcomes are seeded by (session, round, hole, stroke) so a replay from
 // the same session id produces the same shots regardless of frame timing.
+//
+// The club table and mistake rates come from assets/golfer.json so a user can
+// change the game without touching source (README "make it yours"). The
+// `handicap` scalar there multiplies every dispersion sigma and every mistake
+// rate: 1.0 is the stock 12-handicap the defaults are tuned to, higher plays
+// worse, lower better. At handicap 1.0 the numbers equal the previous tuned
+// constants, so harness/montecarlo.mjs is unchanged.
+import fs from 'node:fs';
 import { rngFor, gauss, clamp, dist } from '../util/rng.mjs';
 import { lieAt, pointAt, project } from '../gen/course.mjs';
 
-// carry in yards (full swing), roll as a fraction of carry on fairway,
-// sl/sd = lateral and distance sigma as fractions of carry. Tuned with
-// harness/montecarlo.mjs against the 12-handicap targets in the README.
-export const CLUBS = [
-  { k: 'D',  carry: 250, roll: 0.10, sl: 0.072, sd: 0.070 },
-  { k: '3W', carry: 228, roll: 0.08, sl: 0.070, sd: 0.072 },
-  { k: '5W', carry: 212, roll: 0.07, sl: 0.068, sd: 0.075 },
-  { k: '4H', carry: 198, roll: 0.06, sl: 0.066, sd: 0.080 },
-  { k: '5i', carry: 185, roll: 0.05, sl: 0.064, sd: 0.085 },
-  { k: '6i', carry: 174, roll: 0.04, sl: 0.062, sd: 0.085 },
-  { k: '7i', carry: 163, roll: 0.035, sl: 0.060, sd: 0.085 },
-  { k: '8i', carry: 152, roll: 0.03, sl: 0.058, sd: 0.085 },
-  { k: '9i', carry: 141, roll: 0.025, sl: 0.056, sd: 0.090 },
-  { k: 'PW', carry: 128, roll: 0.02, sl: 0.054, sd: 0.090 },
-  { k: 'GW', carry: 112, roll: 0.015, sl: 0.052, sd: 0.095 },
-  { k: 'SW', carry: 95, roll: 0.01, sl: 0.050, sd: 0.100 },
-  { k: 'LW', carry: 75, roll: 0.01, sl: 0.050, sd: 0.105 },
-];
+const GOLFER_URL = new URL('../../assets/golfer.json', import.meta.url);
+function loadGolfer() {
+  try { return JSON.parse(fs.readFileSync(GOLFER_URL, 'utf8')); } catch { return null; }
+}
+const CFG = loadGolfer() || {};
+const HCP = clamp(Number(CFG.handicap) || 1, 0.3, 3);
+// k: name; carry/roll as before; sl/sd scaled by handicap.
+export const CLUBS = (CFG.clubs && CFG.clubs.length ? CFG.clubs : [
+  { name: 'D', carry: 250, roll: 0.10, sigmaLateral: 0.072, sigmaDistance: 0.070 },
+  { name: '3W', carry: 228, roll: 0.08, sigmaLateral: 0.070, sigmaDistance: 0.072 },
+  { name: '5W', carry: 212, roll: 0.07, sigmaLateral: 0.068, sigmaDistance: 0.075 },
+  { name: '4H', carry: 198, roll: 0.06, sigmaLateral: 0.066, sigmaDistance: 0.080 },
+  { name: '5i', carry: 185, roll: 0.05, sigmaLateral: 0.064, sigmaDistance: 0.085 },
+  { name: '6i', carry: 174, roll: 0.04, sigmaLateral: 0.062, sigmaDistance: 0.085 },
+  { name: '7i', carry: 163, roll: 0.035, sigmaLateral: 0.060, sigmaDistance: 0.085 },
+  { name: '8i', carry: 152, roll: 0.03, sigmaLateral: 0.058, sigmaDistance: 0.085 },
+  { name: '9i', carry: 141, roll: 0.025, sigmaLateral: 0.056, sigmaDistance: 0.090 },
+  { name: 'PW', carry: 128, roll: 0.02, sigmaLateral: 0.054, sigmaDistance: 0.090 },
+  { name: 'GW', carry: 112, roll: 0.015, sigmaLateral: 0.052, sigmaDistance: 0.095 },
+  { name: 'SW', carry: 95, roll: 0.01, sigmaLateral: 0.050, sigmaDistance: 0.100 },
+  { name: 'LW', carry: 75, roll: 0.01, sigmaLateral: 0.050, sigmaDistance: 0.105 },
+]).map(c => ({ k: c.name, carry: c.carry, roll: c.roll, sl: c.sigmaLateral * HCP, sd: c.sigmaDistance * HCP }));
+
+// Mistake rates, scaled by handicap (defaults match the former literals).
+const M0 = CFG.mistakes || {};
+const MIST = {
+  badSwingTee: (M0.badSwingTee ?? 0.12) * HCP,
+  badSwingOther: (M0.badSwingOther ?? 0.10) * HCP,
+  sliceBias: M0.sliceBias ?? 0.72,
+  fat: (M0.fat ?? 0.04) * HCP,
+  thin: (M0.thin ?? 0.02) * HCP,
+  underClub: M0.underClub ?? 0.35,
+  goForItOverWater: M0.goForItOverWater ?? 0.4,
+  duffChipFairway: (M0.duffChipFairway ?? 0.12) * HCP,
+  duffChipRough: (M0.duffChipRough ?? 0.20) * HCP,
+  sandStaysIn: (M0.sandStaysIn ?? 0.12) * HCP,
+  punchHitsTree: (M0.punchHitsTree ?? 0.3) * HCP,
+};
 
 export const DUR = { tee: 1500, address: 1200, swing: 1000, result: 2200, walk: 1500, holed: 3500, round: 4500 };
 
@@ -98,7 +126,7 @@ export function takeShot(h, hole, sid, round) {
     shot.dur = 700 + 40 * ft;
   } else if (lie === 'bunker' && dPin <= 45) {
     shot.kind = 'sand'; shot.club = 'SW';
-    if (rnd() < 0.12) {
+    if (rnd() < MIST.sandStaysIn) {
       end = { x: from.x + (rnd() - 0.5) * 2, y: from.y + (rnd() - 0.5) * 2 }; shot.label = 'STILL IN';
     } else {
       end = nearPin(hole, from, Math.abs(gauss(rnd)) * (9 + 0.5 * dPin) + 2, rnd, 0.6);
@@ -110,7 +138,7 @@ export function takeShot(h, hole, sid, round) {
     const sigma = (lie === 'rough' ? 1.35 : 1) * (5 + 0.35 * dPin);
     const r = rnd();
     if (dPin < 25 && r < 0.03) { end = { x: hole.pin.x, y: hole.pin.y }; shot.holed = true; shot.label = 'CHIP IN!'; }
-    else if (r < (lie === 'rough' ? 0.2 : 0.12)) {
+    else if (r < (lie === 'rough' ? MIST.duffChipRough : MIST.duffChipFairway)) {
       const u = unit(from, hole.pin); const f = 0.3 + 0.3 * rnd();
       end = { x: from.x + u.x * dPin * f, y: from.y + u.y * dPin * f }; shot.label = 'DUFFED';
     } else end = nearPin(hole, from, Math.abs(gauss(rnd)) * sigma + 1, rnd, 0.55);
@@ -121,7 +149,7 @@ export function takeShot(h, hole, sid, round) {
     const target = pointAt(hole, pr.s + 55, 0);
     const u = unit(from, target);
     const carry = Math.min(75, dist(from, target));
-    if (rnd() < 0.3) {
+    if (rnd() < MIST.punchHitsTree) {
       const a = rnd() * Math.PI * 2, d = 6 + rnd() * 16;
       end = { x: from.x + Math.cos(a) * d, y: from.y + Math.sin(a) * d }; shot.label = 'HIT A TREE';
     } else {
@@ -150,7 +178,7 @@ export function takeShot(h, hole, sid, round) {
       for (const wtr of hole.water) {
         if (wtr.kind !== 'creek') continue;
         const wp = project(hole, wtr);
-        if (wp.s > pr.s + carry - 30 && wp.s < pr.s + carry + 20 && rnd() < 0.6) {
+        if (wp.s > pr.s + carry - 30 && wp.s < pr.s + carry + 20 && rnd() < (1 - MIST.goForItOverWater)) {
           const lay = Math.max(50, wp.s - pr.s - 25);
           club = CLUBS.reduce((b, c) => (c.carry * lieMul <= lay && (!b || c.carry > b.carry)) ? c : b, null) || CLUBS[12];
           carry = Math.min(club.carry * lieMul, lay);
@@ -166,7 +194,7 @@ export function takeShot(h, hole, sid, round) {
       else {
         let idx = CLUBS.length - 1;
         for (let i = CLUBS.length - 1; i >= 0; i--) { if (CLUBS[i].carry * lieMul >= eff) { idx = i; break; } }
-        if (rnd() < 0.35 && idx < CLUBS.length - 1) idx++; // the classic under-club
+        if (rnd() < MIST.underClub && idx < CLUBS.length - 1) idx++; // the classic under-club
         club = CLUBS[idx]; carry = club.carry * lieMul;
       }
     }
@@ -179,14 +207,14 @@ export function takeShot(h, hole, sid, round) {
     let d = carry * (1 + sd * gauss(rnd)) + (partial ? 2 * gauss(rnd) : 0);
     let lat = carry * sl * gauss(rnd) + (partial ? 1.5 * gauss(rnd) : 0);
     const r = rnd();
-    const badP = isTee ? 0.12 : 0.10;
+    const badP = isTee ? MIST.badSwingTee : MIST.badSwingOther;
     if (r < badP) {
-      const right = rnd() < 0.72;
+      const right = rnd() < MIST.sliceBias;
       lat += (right ? 1 : -1) * (0.10 + 0.13 * rnd()) * carry;
       d *= 0.88;
       shot.label = right ? 'SLICE' : 'HOOK';
-    } else if (r < badP + 0.04) { d *= 0.55 + 0.25 * rnd(); shot.label = 'FAT'; }
-    else if (r < badP + 0.06) { d *= 1.1; shot.label = 'THIN'; }
+    } else if (r < badP + MIST.fat) { d *= 0.55 + 0.25 * rnd(); shot.label = 'FAT'; }
+    else if (r < badP + MIST.fat + MIST.thin) { d *= 1.1; shot.label = 'THIN'; }
     else if (lie === 'bunker' && rnd() < 0.15) { d *= 0.45; shot.label = 'FAT'; }
     const scale = carry / 250;
     d += w.along * 1.2 * scale;

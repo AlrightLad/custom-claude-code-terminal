@@ -60,6 +60,30 @@ function scoreFg(par, s, R) {
   return d < 0 ? R.bad : d === 0 ? R.text : d === 1 ? R.info : R.textDim;
 }
 
+// Live leaderboard when subagents are in play: rank, name, thru, to-par, one
+// row each, main golfer highlighted, sorted best first. Fills `rows` rows.
+export function leaderboardRows({ board, cols, R, rows }) {
+  const out = [];
+  out.push([{ t: ' LEADERBOARD', fg: R.accent }, { t: '  name       thru   to par', fg: R.textDim }]);
+  const shown = board.slice(0, Math.max(1, rows - 1));
+  for (let i = 0; i < shown.length; i++) {
+    const r = shown[i];
+    const nm = (r.name.length > 9 ? r.name.slice(0, 9) : r.name).padEnd(9);
+    const tp = r.toPar === 0 ? 'E' : toParText(r.toPar);
+    const fg = r.toPar < 0 ? R.bad : r.toPar > 0 ? R.info : R.text;
+    const seg = [
+      { t: ` ${String(i + 1)}. `, fg: R.textDim, bg: r.main ? R.chipB : -1 },
+      { t: nm + ' ', fg: r.main ? R.accent : R.text, bg: r.main ? R.chipB : -1 },
+      { t: `${String(r.thru).padStart(2)}    `, fg: R.textDim, bg: r.main ? R.chipB : -1 },
+      { t: `${tp.padStart(4)}`, fg, bg: r.main ? R.chipB : -1 },
+      { t: r.playing ? '  playing' : r.retiring ? '  done' : '', fg: R.textDim, bg: r.main ? R.chipB : -1 },
+    ];
+    out.push(seg);
+  }
+  while (out.length < rows) out.push([{ t: '', fg: -1 }]);
+  return out.slice(0, rows);
+}
+
 // Three rows: hole numbers, pars, strokes. Nines are separated by a gap,
 // OUT/IN/TOT columns appear when there is room, the current hole is
 // highlighted in all three rows.

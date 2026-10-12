@@ -15,8 +15,11 @@ import { spriteSet, blit, shadow } from './sprites.mjs';
 import { bounds, pointAt, inEllipse, quip, fairwayHalfAt, coursePars } from '../gen/course.mjs';
 import { ballDisplay, pointOnShot, DUR, CLUBS } from '../sim/golf.mjs';
 import { clamp, dist } from '../util/rng.mjs';
-import { statusRow, scorecard } from './hud.mjs';
+import { statusRow, scorecard, leaderboardRows } from './hud.mjs';
 import { renderIdle } from './idle.mjs';
+import { drawWeather } from './seasons.mjs';
+import { drawHoleProps, drawBirds, drawTufts } from './props.mjs';
+import { leaderboard, groupRemark } from '../sim/agents.mjs';
 
 export { TRANSPARENT };
 
@@ -271,9 +274,11 @@ function golferPose(h, now, sprites) {
   }
 }
 
-export function golferMap(cad, R) {
+export function golferMap(cad, R, wardrobe) {
   const g = cad.golfer;
-  return { h: g.hat ? R.white : (g.skin ? R.skinDark : R.skin), f: g.skin ? R.skinDark : R.skin,
+  // Winter knit cap reads red; otherwise a white cap/visor or bare head.
+  const hat = wardrobe && wardrobe.hat === 'knit' ? R.bad : R.white;
+  return { h: g.hat || (wardrobe && wardrobe.hat) ? hat : (g.skin ? R.skinDark : R.skin), f: g.skin ? R.skinDark : R.skin,
     s: R.shirts[g.shirt % R.shirts.length], p: R.pants[g.pants % R.pants.length], k: R.outline, c: R.club, C: R.gray };
 }
 export function caddieMap(cad, R) {
@@ -292,8 +297,23 @@ function golferWorld(h) {
   return { x: h.ball.x, y: h.ball.y };
 }
 
+// Each active subagent golfer: its ball (in its shirt colour) plus its initial
+// above it, when the ball falls inside the current camera window.
+function drawAgents(c, st, m, R, tier) {
+  for (const g of Object.values(st.agents || {})) {
+    if (g.retired) continue;
+    const b = ballDisplay(g.hole);
+    const px = Math.round(m.px(b.x)), py = Math.round(m.py(b.y));
+    if (px < 1 || px >= c.w - 1 || py < 2 || py >= c.h) continue;
+    const col = R.shirts[g.shirt % R.shirts.length];
+    set(c, px, py, col); if (tier.sx > 1) set(c, px + 1, py, col);
+    set(c, px, py + 1, R.shadow);
+    label(c, Math.floor(px / tier.sx), Math.floor(py / tier.sy) - 1, g.name[0], col, R.frameBg);
+  }
+}
+
 // Returns the sprite's bounding box so the caller can assert it fits.
-function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg) {
+function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg, season) {
   const shots = h.shots;
   for (let i = 0; i < shots.length - 1; i++) drawTrace(c, shots[i], m, 1, R.traceOld, R.traceOld);
   const cur = shots[shots.length - 1];
@@ -333,7 +353,7 @@ function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg) {
     if (dbg) dbg.spriteClamped = `(${sx},${sy})->(${cx0},${cy0})`;
     sx = cx0; sy = cy0;
   }
-  const map = golferMap(cad, R);
+  const map = golferMap(cad, R, season && season.data.wardrobe);
   // The caddie stands a few cells behind the golfer (away from the target)
   // whenever nobody is swinging, and keeps the bag out of the shot.
   if (h.phase !== 'swing' && h.phase !== 'flight' && cad.transport !== 'cart') {
@@ -344,6 +364,11 @@ function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg) {
   }
   shadow(c, pose, sx, sy, R.shadow, faceLeft);
   blit(c, pose, sx, sy, map, faceLeft);
+  // Winter breath puff while standing.
+  if (season && season.data.wardrobe && season.data.wardrobe.breath && (h.phase === 'stand' || h.phase === 'address' || h.phase === 'tee') && Math.floor(now / 1500) % 3 === 0) {
+    const hx = faceLeft ? sx - 1 : sx + bw, hy = sy + 1;
+    set(c, hx, hy, R.white);
+  }
   if (!(h.holed && h.phase === 'holed')) {
     const bpx = Math.round(m.px(ball.x)), bpy = Math.round(m.py(ball.y));
     if (h.phase !== 'flight') set(c, bpx, bpy + 1, R.shadow);
@@ -444,28 +469,22 @@ function camera(view, h, hole, cols, picRows, gutter, tier) {
     needX = (Math.abs(target.x - focus.x) + 2 * MARGIN_X) / unitsW;
     needY = (2 * hbMax + 2 * ROUGH_MARGIN) / unitsH;
   }
-  // In the green view the sprite stands up to 9.5 units above the ball, so
-  // the vertical span ball<->pin must fit under that headroom.
-  if (view === 'green') needY = Math.max(needY, (Math.abs(target.y - focus.y) + 2 * GREEN_MARGIN) / Math.max(2, unitsH - 9.5 - 1.2));
   const u = clamp(Math.max(needX, needY), U_MIN, U_MAX);
   const viewW = unitsW * u, viewH = unitsH * u;
   // room for the golfer sprite at either end of the hole
   const bx0 = box.minX - 5 * u, bx1 = box.maxX + 5 * u;
   let camX = (focus.x + target.x) / 2;
   camX = bx1 - bx0 <= viewW ? (bx0 + bx1) / 2 : clamp(camX, bx0 + viewW / 2, bx1 - viewW / 2);
-  // Vertical: the sprite stands 4.5 rows above the ball, so the ball sits
-  // about two thirds of the way down (never closer than 1.5 units to the
-  // bottom, never less than 5 units from the top). Only clamp to the hole's
-  // box when the box is taller than the view.
-  const ballUnit = clamp(unitsH * 0.66, Math.min(9.5, unitsH - 1.2), unitsH - 1.2);
+  // Vertical: the golfer (10 units / 5 rows, standing ~9 units above the ball)
+  // always fits. Put the ball near the bottom so the sprite has its headroom,
+  // but never demand more headroom than the view has. The pin is kept in view
+  // only when there is slack; it never pushes the golfer off the top.
+  const head = Math.min(9, unitsH - 2);           // units above the ball
+  const ballUnit = clamp(unitsH - 2, head + 0.5, unitsH - 1);
   let camY = focus.y + (unitsH / 2 - ballUnit) * u;
   if (view === 'green') {
-    // keep the pin inside the window without pushing the sprite out
-    const minY = camY - viewH / 2, maxY = camY + viewH / 2;
-    if (hole.pin.y < minY + GREEN_MARGIN) camY -= (minY + GREEN_MARGIN - hole.pin.y);
-    else if (hole.pin.y > maxY - GREEN_MARGIN) camY += (hole.pin.y - (maxY - GREEN_MARGIN));
-    const topRoom = (focus.y - (camY - viewH / 2)) / u; // units above the ball
-    if (topRoom < 9.5) camY = focus.y - (viewH / 2 - 9.5 * u) + 0.01;
+    const slackTop = (focus.y - head * u) - (camY - viewH / 2); // yards of room above the sprite
+    if (slackTop > 0 && hole.pin.y < camY - viewH / 2 + GREEN_MARGIN) camY = Math.max(camY - slackTop, hole.pin.y - GREEN_MARGIN + viewH / 2);
   } else if (box.maxY - box.minY > viewH) camY = clamp(camY, box.minY + viewH / 2, box.maxY - viewH / 2);
   const m = windowMap(tier, camX - viewW / 2, camY - viewH / 2, u, gutter);
   const win = { minX: camX - viewW / 2, maxX: camX + viewW / 2, minY: camY - viewH / 2, maxY: camY + viewH / 2 };
@@ -483,7 +502,9 @@ function renderWorking(ctx) {
   // scorecard (3 rows) + status chips. Each block has its own rows; nothing
   // overlaps. Below nine rows the frame is dropped; below twelve, the card.
   const framed = rows >= 9;
-  const cardRows = rows >= 12 && cols >= 60 ? 3 : 0;
+  // The scorecard/leaderboard costs three rows; only take them once the
+  // picture can still give the 5-row golfer headroom (>= 7 rows left).
+  const cardRows = rows >= 13 && cols >= 60 ? 3 : 0;
   const picRows = rows - 1 - cardRows - (framed ? 2 : 0);
   const gutter = framed ? 1 : 0;
   const W = cols * tier.sx, H = picRows * tier.sy;
@@ -492,11 +513,17 @@ function renderWorking(ctx) {
   const cam = camera(view, h, hole, cols, picRows, gutter, tier);
   const dbg = {};
   drawGround(c, hole, cam.m, R, ctx.seedInt);
+  if (ctx.season) drawHoleProps(c, hole, cam.m, R, tier, cad, pointAt, ctx.season.data);
   if (cols >= 60 && picRows >= 4) {
     const g = golferWorld(h);
     drawMinimap(c, hole, h, cam.m, R, tier, cam.win, cam.m.px(g.x));
   }
-  const box = drawPlay(c, h, hole, cam.m, cad, now, tier, R, sprites, dbg);
+  const box = drawPlay(c, h, hole, cam.m, cad, now, tier, R, sprites, dbg, ctx.season);
+  // Other golfers (subagents) sharing the hole: a coloured ball + initial.
+  if (ctx.agents) drawAgents(c, st, cam.m, R, tier);
+  if (ctx.season && ctx.season.data.props && ctx.season.data.props.birds) drawBirds(c, now, ctx.seedInt, R, tier, ctx.season.data.props.birds);
+  if (ctx.season) drawTufts(c, now, ctx.seedInt, R, tier);
+  if (ctx.weather) drawWeather(c, ctx.weather, now, R, tier, hole.wind.dir);
   if (framed) for (let r = 0; r < picRows; r++) { label(c, 0, r, '│', R.frame, R.frameBg); label(c, cols - 1, r, '│', R.frame, R.frameBg); }
 
   const pre = [], textRows = [];
@@ -509,8 +536,17 @@ function renderWorking(ctx) {
     pre.push([{ t: '┌─', fg: R.frame }, { t: title, fg: R.text }, { t: '─'.repeat(fill) + '─┐', fg: R.frame }]);
     textRows.push([{ t: '└' + '─'.repeat(cols - 2) + '┘', fg: R.frame }]);
   }
-  if (cardRows) for (const row of scorecard({ st, pars: coursePars(sid), cols, R })) textRows.push(row);
-  textRows.push(statusRow({ hole, h, cols, R, toPar, thru, cad, framed, quip: cols >= 120 ? quip(sid, hole.no, h.strokes, ev) : null }));
+  // With subagents in play the scorecard rows become a live leaderboard; the
+  // status chips carry a group remark instead of the solo caddie line.
+  if (ctx.agents) {
+    const board = leaderboard(st, { toPar, thru });
+    if (cardRows) for (const row of leaderboardRows({ board, cols, R, rows: cardRows })) textRows.push(row);
+    textRows.push(statusRow({ hole, h, cols, R, toPar, thru, cad, framed,
+      quip: cols >= 110 ? groupRemark(st, sid, { toPar, thru }) : null }));
+  } else {
+    if (cardRows) for (const row of scorecard({ st, pars: coursePars(sid), cols, R })) textRows.push(row);
+    textRows.push(statusRow({ hole, h, cols, R, toPar, thru, cad, framed, quip: cols >= 120 ? quip(sid, hole.no, h.strokes, ev) : null }));
+  }
   const spriteCells = `${Math.ceil(box.w / tier.sx)}x${Math.ceil(box.h / tier.sy)}cells`;
   if (ctx.debug) {
     const extra = dbg.spriteClamped ? ` sprite-clamped=${dbg.spriteClamped}` : '';

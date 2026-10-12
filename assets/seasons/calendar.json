@@ -1,0 +1,6 @@
+{
+  "notes": "Which months belong to which season, per hemisphere. CCGOLF_SEASON=auto reads the system date and CCGOLF_HEMISPHERE (north by default). Month numbers are 1-12. Golden hour: local hours (24h) during which the season's 'golden' palette overrides apply.",
+  "north": { "winter": [12, 1, 2], "spring": [3, 4, 5], "summer": [6, 7, 8], "fall": [9, 10, 11] },
+  "south": { "winter": [6, 7, 8], "spring": [9, 10, 11], "summer": [12, 1, 2], "fall": [3, 4, 5] },
+  "goldenHours": [6, 7, 18, 19]
+}

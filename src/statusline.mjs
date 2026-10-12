@@ -9,6 +9,8 @@ import { renderScene } from './render/scene.mjs';
 import { loadPalette } from './render/palette.mjs';
 import { renderCells } from './out/cells.mjs';
 import { selectTier } from './render/tiers.mjs';
+import { resolveSeason, applySeason, weatherFor } from './render/seasons.mjs';
+import { readRoster, stepAgents, activeAgentCount } from './sim/agents.mjs';
 import { golfHome, ensureDirs, loadState, saveState, readMode, updateCareer } from './state.mjs';
 import { clamp, hash32 } from './util/rng.mjs';
 
@@ -70,6 +72,9 @@ function main() {
   if (!st.act || st.act.sig !== sig) st.act = { sig, t: now };
   if (mode === 'WORKING' && modeInfo.source !== 'env' && modeInfo.t > 0 && now / 1000 - modeInfo.t > 300 && now - st.act.t > 300000) mode = 'IDLE';
   const events = step(st, hole, mode, dt, now);
+  // Subagent golfers: reconcile with the roster the hooks maintain, advance them.
+  const roster = readRoster(home, sid);
+  if (roster.length || (st.agents && Object.keys(st.agents).length)) stepAgents(st, hole, roster, mode, dt, now);
   mark('sim');
   const sandbox = /^(test-|bench|scene-|demo)/.test(sid) || envVar('NO_CAREER');
   if (events.length && !sandbox) {
@@ -81,9 +86,13 @@ function main() {
   // The hole geometry may have changed if a hole was finished during step().
   const curHole = st.hole.no === hole.no ? hole : genHole(sid, st.hole.no);
   const pal = loadPalette(theme);
+  // Season: palette overrides, wardrobe, props and weather, resolved once.
+  const season = resolveSeason(process.env, now);
+  applySeason(pal, season);
+  const weather = weatherFor(season, sid, curHole.no, now);
   const ctx = { st, hole: curHole, cad, cols: usable, rows: rowsWorking, mode: st.mode, now, sid, tier,
     pal, R: pal.roles, seedInt: hash32(sid + ':' + curHole.no), toPar: t.toPar, thru: t.thru, strokesTotal: t.strokes,
-    debug: !!envVar('DEBUG') };
+    season, weather, agents: activeAgentCount(st), debug: !!envVar('DEBUG') };
   const frame = renderScene(ctx);
   mark('scene');
   if (ctx.violation) {

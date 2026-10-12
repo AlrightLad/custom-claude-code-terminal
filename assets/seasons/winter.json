@@ -1,0 +1,64 @@
+{
+  "name": "winter",
+  "notes": "Snow golf. White ground with mown lines showing through, orange ball, bare dark trees, knit cap and jacket, breath puffs, snow drifting across the frame, muted palette, low sun. The luminance ladder is deliberately flipped on the ground (undisturbed snow is lighter than the mown fairway); harness/greyscale.mjs checks contrast, not order, for seasons.",
+  "palette": {
+    "roughDark": "#d4d9de",
+    "rough": "#dde2e6",
+    "roughLight": "#e6eaed",
+    "fairwayDark": "#b9c4bf",
+    "fairway": "#c4cec9",
+    "fairwayLight": "#cfd8d3",
+    "fringe": "#dde4e0",
+    "greenDark": "#d8e0dc",
+    "green": "#e3e9e6",
+    "greenLight": "#eef2f0",
+    "tree": "#4a3f33",
+    "treeDark": "#2c251e",
+    "treeLight": "#6e5f4e",
+    "trunk": "#3a2e22",
+    "sand": "#f2ede0",
+    "sandLip": "#d6cfbf",
+    "water": "#1c2e4a",
+    "waterDeep": "#121f33",
+    "waterLight": "#8fb3d9",
+    "ball": "#ff7a1a",
+    "trace": "#ff9a3a",
+    "traceOld": "#8a8f94",
+    "sky": "#0e1116",
+    "frame": "#8a9aa8",
+    "shadow": "#9aa4ad"
+  },
+  "golden": {
+    "rough": "#e8d8c8",
+    "roughLight": "#f0e2d2",
+    "roughDark": "#dccabb",
+    "fairway": "#c9b8a8",
+    "fairwayLight": "#d4c3b2",
+    "fairwayDark": "#bcac9c",
+    "sky": "#2a1a14",
+    "frame": "#c08a40"
+  },
+  "weather": {
+    "snow": 0.6,
+    "overcast": 0.5,
+    "rain": 0,
+    "lowSun": true
+  },
+  "sim": {
+    "carry": 0.93,
+    "roll": 0.5
+  },
+  "wardrobe": {
+    "hat": "knit",
+    "hatColor": "#d8403a",
+    "jacket": true,
+    "breath": true
+  },
+  "props": {
+    "birds": 0.1,
+    "benches": true,
+    "ballWasher": false,
+    "rakes": false,
+    "bareTrees": true
+  }
+}

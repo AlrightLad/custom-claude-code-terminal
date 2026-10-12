@@ -1,0 +1,32 @@
+{
+  "notes": "The golfer's game. carry is a full-swing distance in yards; roll is a fraction of carry on firm fairway; sigmaLateral and sigmaDistance are standard deviations as fractions of carry. handicap scales every sigma and the mistake rates: 1.0 is the stock 12-handicap, 0.6 plays like a 4, 1.6 plays like a 20. Edit this file, run `node harness/montecarlo.mjs 300` and watch the profile change.",
+  "handicap": 1.0,
+  "mistakes": {
+    "badSwingTee": 0.12,
+    "badSwingOther": 0.10,
+    "sliceBias": 0.72,
+    "fat": 0.04,
+    "thin": 0.02,
+    "underClub": 0.35,
+    "goForItOverWater": 0.4,
+    "duffChipFairway": 0.12,
+    "duffChipRough": 0.20,
+    "sandStaysIn": 0.12,
+    "punchHitsTree": 0.3
+  },
+  "clubs": [
+    { "name": "D",  "carry": 250, "roll": 0.10,  "sigmaLateral": 0.072, "sigmaDistance": 0.070 },
+    { "name": "3W", "carry": 228, "roll": 0.08,  "sigmaLateral": 0.070, "sigmaDistance": 0.072 },
+    { "name": "5W", "carry": 212, "roll": 0.07,  "sigmaLateral": 0.068, "sigmaDistance": 0.075 },
+    { "name": "4H", "carry": 198, "roll": 0.06,  "sigmaLateral": 0.066, "sigmaDistance": 0.080 },
+    { "name": "5i", "carry": 185, "roll": 0.05,  "sigmaLateral": 0.064, "sigmaDistance": 0.085 },
+    { "name": "6i", "carry": 174, "roll": 0.04,  "sigmaLateral": 0.062, "sigmaDistance": 0.085 },
+    { "name": "7i", "carry": 163, "roll": 0.035, "sigmaLateral": 0.060, "sigmaDistance": 0.085 },
+    { "name": "8i", "carry": 152, "roll": 0.03,  "sigmaLateral": 0.058, "sigmaDistance": 0.085 },
+    { "name": "9i", "carry": 141, "roll": 0.025, "sigmaLateral": 0.056, "sigmaDistance": 0.090 },
+    { "name": "PW", "carry": 128, "roll": 0.02,  "sigmaLateral": 0.054, "sigmaDistance": 0.090 },
+    { "name": "GW", "carry": 112, "roll": 0.015, "sigmaLateral": 0.052, "sigmaDistance": 0.095 },
+    { "name": "SW", "carry": 95,  "roll": 0.01,  "sigmaLateral": 0.050, "sigmaDistance": 0.100 },
+    { "name": "LW", "carry": 75,  "roll": 0.01,  "sigmaLateral": 0.050, "sigmaDistance": 0.105 }
+  ]
+}
