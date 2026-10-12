@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 
 export function golfHome() {
-  return process.env.GOLF_HOME || path.join(os.homedir(), '.claude', 'golf');
+  return process.env.CCGOLF_HOME || process.env.GOLF_HOME || path.join(os.homedir(), '.claude', 'golf');
 }
 
 export function ensureDirs(home) {
@@ -30,7 +30,12 @@ export function writeJsonAtomic(file, obj) {
   try {
     fs.writeFileSync(tmp, data);
     try { fs.renameSync(tmp, file); }
-    catch { fs.renameSync(tmp, file); } // one retry: Windows can refuse while another reader holds the file
+    catch {
+      // Windows can refuse the rename while another reader holds the file:
+      // retry once, then copy over and drop the temp file.
+      try { fs.renameSync(tmp, file); }
+      catch { fs.copyFileSync(tmp, file); fs.unlinkSync(tmp); }
+    }
   } catch {
     try { fs.unlinkSync(tmp); } catch {}
     try { fs.writeFileSync(file, data); } catch {}
@@ -51,7 +56,7 @@ export function saveState(home, sid, st) {
 // Mode file format: "WORKING <epoch seconds>" or "IDLE <epoch seconds>".
 // A per-session file wins over the shared one when a hook writes it.
 export function readMode(home, sid) {
-  const forced = process.env.GOLF_MODE;
+  const forced = process.env.CCGOLF_MODE || process.env.GOLF_MODE;
   if (forced) return { mode: /^w/i.test(forced) ? 'WORKING' : 'IDLE', t: 0, source: 'env' };
   for (const f of [path.join(home, 'state', 'mode-' + safeName(sid)), path.join(home, 'state', 'mode')]) {
     let txt = null;

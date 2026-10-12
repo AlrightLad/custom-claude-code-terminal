@@ -8,10 +8,17 @@ import { newState, step, totals, applyCareer, STATE_VERSION } from './sim/sessio
 import { renderScene } from './render/scene.mjs';
 import { loadPalette } from './render/palette.mjs';
 import { renderCells } from './out/cells.mjs';
+import { selectTier } from './render/tiers.mjs';
 import { golfHome, ensureDirs, loadState, saveState, readMode, updateCareer } from './state.mjs';
 import { clamp } from './util/rng.mjs';
 
 const T0 = Date.now();
+
+// CCGOLF_* is the documented prefix; GOLF_* still works for older installs.
+function envVar(name) {
+  const v = process.env['CCGOLF_' + name];
+  return v !== undefined ? v : process.env['GOLF_' + name];
+}
 
 function intEnv(name, dflt) {
   const v = parseInt(process.env[name], 10);
@@ -19,7 +26,7 @@ function intEnv(name, dflt) {
 }
 
 const marks = [];
-const mark = name => { if (process.env.GOLF_TRACE) marks.push([name, Date.now() - T0]); };
+const mark = name => { if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) marks.push([name, Date.now() - T0]); };
 
 function main() {
   let raw = '';
@@ -33,15 +40,18 @@ function main() {
   const lines = clamp(intEnv('LINES', 24), 8, 200);
   // Claude Code truncates rows past COLUMNS - 5 - padding (docs/PROBE.md).
   const usable = clamp(cols - 7, 13, 393);
-  const rowsWorking = process.env.GOLF_ROWS ? clamp(intEnv('GOLF_ROWS', 8), 3, 16) : clamp(Math.floor((lines - 6) / 3), 4, 12);
-  const colorMode = process.env.GOLF_COLOR === '256' ? '256' : 'truecolor';
-  const timeScale = clamp(Number(process.env.GOLF_TIME_SCALE) || 1, 0.1, 50);
+  const rowsEnv = parseInt(envVar('ROWS'), 10);
+  const rowsWorking = Number.isFinite(rowsEnv) ? clamp(rowsEnv, 3, 16) : clamp(Math.floor((lines - 6) / 3), 4, 12);
+  const colorMode = envVar('COLOR') === '256' ? '256' : 'truecolor';
+  const timeScale = clamp(Number(envVar('TIME_SCALE')) || 1, 0.1, 50);
+  const tier = selectTier(process.env);
+  const theme = envVar('THEME') || 'augusta';
 
   const home = golfHome();
   ensureDirs(home);
   const modeInfo = readMode(home, sid);
-  // GOLF_NOW lets the harness drive the clock deterministically.
-  const now = Number(process.env.GOLF_NOW) || Date.now();
+  // CCGOLF_NOW lets the harness drive the clock deterministically.
+  const now = Number(envVar('NOW')) || Date.now();
   let st = loadState(home, sid);
   if (!st || st.v !== STATE_VERSION || st.sid !== sid || !st.hole) st = newState(sid, now);
   const dt = clamp(now - (st.t || now), 0, 2500) * timeScale;
@@ -52,7 +62,7 @@ function main() {
   mark('gen');
   const events = step(st, hole, modeInfo.mode, dt, now);
   mark('sim');
-  const sandbox = /^(test-|bench|scene-)/.test(sid) || process.env.GOLF_NO_CAREER;
+  const sandbox = /^(test-|bench|scene-|demo)/.test(sid) || envVar('NO_CAREER');
   if (events.length && !sandbox) {
     try { updateCareer(home, c => { for (const ev of events) applyCareer(c, ev, sid, now); }); } catch {}
   }
@@ -61,16 +71,16 @@ function main() {
   const t = totals(st);
   // The hole geometry may have changed if a hole was finished during step().
   const curHole = st.hole.no === hole.no ? hole : genHole(sid, st.hole.no);
-  const frame = renderScene({ st, hole: curHole, cad, cols: usable, rows: rowsWorking, mode: st.mode, now, sid,
+  const frame = renderScene({ st, hole: curHole, cad, cols: usable, rows: rowsWorking, mode: st.mode, now, sid, tier,
     toPar: t.toPar, thru: t.thru, strokesTotal: t.strokes });
   mark('scene');
-  const out = renderCells(frame, loadPalette(), colorMode);
+  const out = renderCells(frame, loadPalette(theme), colorMode, tier);
   mark('cells');
   saveState(home, sid, st);
   mark('save');
   process.stdout.write(out + '\n');
 
-  if (process.env.GOLF_TRACE) {
+  if (envVar('TRACE')) {
     const detail = marks.map(([n, ms]) => `${n}=${ms}`).join(' ');
     try { fs.appendFileSync(path.join(home, 'trace.log'), `${now}\t${sid.slice(0, 8)}\t${st.mode}\t${st.hole.phase}\tbody=${Date.now() - T0}ms\tprocess=${Math.round(process.uptime() * 1000)}ms\t${detail}\n`); } catch {}
   }

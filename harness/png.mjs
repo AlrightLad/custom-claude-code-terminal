@@ -1,20 +1,24 @@
 #!/usr/bin/env node
-// Renders a captured frame (ANSI half-block rows) to a PNG so the art can be
-// reviewed outside a terminal. Zero dependencies: a minimal PNG encoder on
-// top of node:zlib. Text cells are drawn as their background with a dark
-// underline so label placement is visible; read the text itself from the
-// frame file.
-// usage: node harness/png.mjs <frame.txt> <out.png> [scale=6]
+// Renders a captured frame (ANSI rows from any glyph tier) to a PNG so the
+// art can be reviewed outside a terminal. Zero dependencies: a minimal PNG
+// encoder on top of node:zlib. Each cell becomes a 12x24 pixel block split
+// into the tier's subpixels, so quadrant and sextant frames show their real
+// resolution. Text cells are drawn with a 3x5 pixel font.
+// usage: node harness/png.mjs <frame.txt> <out.png> [--grey] [--scale N]
 import fs from 'node:fs';
 import zlib from 'node:zlib';
+import { TIERS, maskOf } from '../src/render/tiers.mjs';
+import { FONT3x5 } from './font.mjs';
 
-const [, , inFile, outFile, scaleArg] = process.argv;
-if (!inFile || !outFile) { console.error('usage: node harness/png.mjs <frame.txt> <out.png> [scale]'); process.exit(1); }
-const SCALE = Number(scaleArg) || 6;
+const args = process.argv.slice(2);
+const inFile = args[0], outFile = args[1];
+if (!inFile || !outFile) { console.error('usage: node harness/png.mjs <frame.txt> <out.png> [--grey] [--scale N]'); process.exit(1); }
+const GREY = args.includes('--grey');
+const scaleIdx = args.indexOf('--scale');
+const CELL_W = scaleIdx >= 0 ? Number(args[scaleIdx + 1]) : 12;
+const CELL_H = CELL_W * 2;
 const ESC = String.fromCharCode(27);
-const UPPER = String.fromCharCode(0x2580), LOWER = String.fromCharCode(0x2584);
 
-// Parse rows into cells: {ch, fg:[r,g,b]|null, bg:[r,g,b]|null}
 function parseRow(row) {
   const cells = [];
   let fg = null, bg = null;
@@ -57,31 +61,51 @@ const parsed = rows.map(parseRow);
 const W = Math.max(...parsed.map(r => r.length), 1);
 const H = parsed.length;
 const DEF_BG = [24, 24, 24], DEF_FG = [220, 220, 220];
-const pw = W * SCALE, ph = H * SCALE * 2;
+const pw = W * CELL_W, ph = H * CELL_H;
 const img = Buffer.alloc(pw * ph * 3);
-function put(x, y, c) { const o = (y * pw + x) * 3; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; }
+function put(x, y, c) {
+  const o = (y * pw + x) * 3;
+  if (GREY) { const l = Math.round(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]); img[o] = l; img[o + 1] = l; img[o + 2] = l; }
+  else { img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; }
+}
+
+// Work out the block pattern of a cell for any tier; returns {sx, sy, mask} or null for text.
+function pattern(ch) {
+  if (ch === ' ') return { sx: 1, sy: 1, mask: 0 };
+  for (const name of ['sextant', 'quadrant', 'halfblock']) {
+    const t = TIERS[name];
+    const m = maskOf(t, ch);
+    if (m >= 0) return { sx: t.sx, sy: t.sy, mask: m };
+  }
+  return null;
+}
+
 for (let r = 0; r < H; r++) {
   const cells = parsed[r];
   for (let x = 0; x < W; x++) {
     const cell = cells[x] || { ch: ' ', fg: null, bg: null };
     const fg = cell.fg || DEF_FG, bg = cell.bg || DEF_BG;
-    let top = bg, bot = bg, textCell = false;
-    if (cell.ch === UPPER) { top = fg; bot = bg; }
-    else if (cell.ch === LOWER) { top = bg; bot = fg; }
-    else if (cell.ch !== ' ') { textCell = true; }
-    for (let dy = 0; dy < SCALE * 2; dy++) for (let dx = 0; dx < SCALE; dx++) {
-      let c = dy < SCALE ? top : bot;
-      if (textCell) {
-        // crude glyph: fg block with the background showing in a 1px frame
-        const inner = dx > 0 && dx < SCALE - 1 && dy > 1 && dy < SCALE * 2 - 2;
-        c = inner ? fg : bg;
+    const pat = pattern(cell.ch);
+    const ox = x * CELL_W, oy = r * CELL_H;
+    if (pat) {
+      const bw = CELL_W / pat.sx, bh = CELL_H / pat.sy;
+      for (let dy = 0; dy < CELL_H; dy++) for (let dx = 0; dx < CELL_W; dx++) {
+        const bit = Math.floor(dy / bh) * pat.sx + Math.floor(dx / bw);
+        put(ox + dx, oy + dy, (pat.mask >> bit) & 1 ? fg : bg);
       }
-      put(x * SCALE + dx, r * SCALE * 2 + dy, c);
+    } else {
+      // text: background, then a 3x5 glyph scaled to the cell
+      const glyph = FONT3x5[cell.ch.toUpperCase()] || FONT3x5['?'];
+      const gw = CELL_W / 5, gh = CELL_H / 7; // 1px margin around a 3x5 glyph
+      for (let dy = 0; dy < CELL_H; dy++) for (let dx = 0; dx < CELL_W; dx++) {
+        const gx = Math.floor(dx / gw) - 1, gy = Math.floor(dy / gh) - 1;
+        const on = gx >= 0 && gx < 3 && gy >= 0 && gy < 5 && ((glyph[gy] >> (2 - gx)) & 1);
+        put(ox + dx, oy + dy, on ? fg : bg);
+      }
     }
   }
 }
 
-// PNG encode
 function crc32(buf) {
   let c, crc = 0xffffffff;
   for (let n = 0; n < buf.length; n++) {
@@ -106,4 +130,4 @@ const png = Buffer.concat([
   chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
 ]);
 fs.writeFileSync(outFile, png);
-console.log(`${outFile}: ${W}x${H} cells -> ${pw}x${ph} px`);
+console.log(`${outFile}: ${W}x${H} cells -> ${pw}x${ph} px${GREY ? ' (greyscale)' : ''}`);

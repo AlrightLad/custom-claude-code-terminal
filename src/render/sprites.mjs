@@ -108,6 +108,26 @@ export const TREE_SIDE = [
 
 export const CLOUD = ['www.ww', '.wwww.'];
 
+// Nearest-neighbour rescale of a sprite by (fx, fy); fy may be 1.5 for the
+// sextant tier. Keeps the string-array form so blit() works unchanged.
+const scaleCache = new Map();
+export function scaleSprite(sprite, fx, fy) {
+  if (fx === 1 && fy === 1) return sprite;
+  const key = sprite.join('|') + '@' + fx + 'x' + fy;
+  const hit = scaleCache.get(key);
+  if (hit) return hit;
+  const h = Math.round(sprite.length * fy), w = Math.round(sprite[0].length * fx);
+  const out = [];
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(sprite.length - 1, Math.floor(y / fy));
+    let row = '';
+    for (let x = 0; x < w; x++) row += sprite[sy][Math.min(sprite[0].length - 1, Math.floor(x / fx))];
+    out.push(row);
+  }
+  scaleCache.set(key, out);
+  return out;
+}
+
 // flip=true mirrors the sprite horizontally (a golfer facing left).
 export function blit(canvas, sprite, x0, y0, map, flip = false) {
   for (let r = 0; r < sprite.length; r++) {

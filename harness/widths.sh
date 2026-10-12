@@ -2,11 +2,12 @@
 # Width matrix: every row must fit in COLUMNS - 5 cells (Claude Code's own
 # truncation point, docs/PROBE.md) and end with a full SGR reset.
 FIX="${1:-harness/fixtures/working.json}"
-export GOLF_HOME="${GOLF_HOME:-${TMPDIR:-/tmp}/golf-widths}"
-export GOLF_MODE="${GOLF_MODE:-WORKING}"
+export CCGOLF_HOME="${CCGOLF_HOME:-${TMPDIR:-/tmp}/golf-widths}"
+export CCGOLF_MODE="${CCGOLF_MODE:-WORKING}"
+for TIER in halfblock quadrant sextant; do
 for W in 80 100 120 160 200; do
-  echo "=== COLUMNS=$W ==="
-  OUT=$(COLUMNS=$W LINES=40 node src/statusline.mjs < "$FIX")
+  echo "=== COLUMNS=$W tier=$TIER ==="
+  OUT=$(COLUMNS=$W LINES=40 CCGOLF_GLYPHS=$TIER node src/statusline.mjs < "$FIX")
   printf '%s\n' "$OUT" | cat -A | head -24
   printf '%s\n' "$OUT" | node -e '
     const cols = Number(process.argv[1]);
@@ -22,5 +23,6 @@ for W in 80 100 120 160 200; do
     console.log(`--- rows ${rows.length}  max cells ${max}  limit ${cols - 5}  reset-terminated ${bad === 0}  => ${ok ? "OK" : "FAIL"}`);
     process.exitCode = ok ? 0 : 1;
   ' "$W" || FAIL=1
+done
 done
 [ -z "$FAIL" ] && echo "widths: all clean" || { echo "widths: FAIL"; exit 1; }
