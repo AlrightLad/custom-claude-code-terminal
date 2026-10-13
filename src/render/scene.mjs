@@ -17,7 +17,7 @@ import { ballDisplay, pointOnShot, DUR, CLUBS } from '../sim/golf.mjs';
 import { clamp, dist, easeInOut } from '../util/rng.mjs';
 import { statusRow, scorecard, leaderboardRows } from './hud.mjs';
 import { renderIdle } from './idle.mjs';
-import { drawWeather } from './seasons.mjs';
+import { drawWeather, drawFlowers } from './seasons.mjs';
 import { drawHoleProps, drawBirds, drawTufts } from './props.mjs';
 import { leaderboard, groupRemark } from '../sim/agents.mjs';
 
@@ -558,6 +558,7 @@ function renderWorking(ctx) {
   // cli-truncate container (one overflowing line drops all lines after it;
   // docs/PRIOR-ART.md finding 3), so nothing ever clips or wraps.
   drawGround(c, hole, cam.m, R, ctx.seedInt);
+  if (ctx.weather && ctx.weather.flowers) drawFlowers(c, R, ctx.seedInt);
   if (ctx.season) drawHoleProps(c, hole, cam.m, R, tier, cad, pointAt, ctx.season.data);
   if (cols >= 90 && picRows >= 5) {
     const g = golferWorld(h);

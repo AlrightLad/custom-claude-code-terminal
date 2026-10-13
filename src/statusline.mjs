@@ -9,7 +9,7 @@ import { renderScene } from './render/scene.mjs';
 import { loadPalette } from './render/palette.mjs';
 import { renderCells } from './out/cells.mjs';
 import { selectTier } from './render/tiers.mjs';
-import { resolveSeason, applySeason, weatherFor } from './render/seasons.mjs';
+import { resolveSeason, applySeason, weatherFor, darkenForWeather } from './render/seasons.mjs';
 import { readRoster, stepAgents, activeAgentCount } from './sim/agents.mjs';
 import { golfHome, ensureDirs, loadState, saveState, readMode, updateCareer } from './state.mjs';
 import { clamp, hash32 } from './util/rng.mjs';
@@ -94,6 +94,7 @@ function main(raw) {
   const season = resolveSeason(process.env, now);
   applySeason(pal, season);
   const weather = weatherFor(season, sid, curHole.no, now);
+  darkenForWeather(pal, weather); // overcast/rain mood, before the quantizer tables build
   const ctx = { st, hole: curHole, cad, cols: usable, rows: rowsWorking, mode: st.mode, now, sid, tier,
     pal, R: pal.roles, seedInt: hash32(sid + ':' + curHole.no), toPar: t.toPar, thru: t.thru, strokesTotal: t.strokes,
     season, weather, agents: activeAgentCount(st), debug: !!envVar('DEBUG') };

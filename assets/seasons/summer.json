@@ -2,17 +2,55 @@
   "name": "summer",
   "notes": "Links summer: firm, fast, burnt-out fairways, dune grass rough, sandy waste, the sea in the distance on some holes, high bright sun. Visor and shorts.",
   "palette": {
-    "roughDark": "#7e8a3c", "rough": "#879440", "roughLight": "#919e46",
-    "fairwayDark": "#b1b65c", "fairway": "#b9be62", "fairwayLight": "#c3c86a",
-    "fringe": "#cdd27a", "greenDark": "#d4da86", "green": "#dce292", "greenLight": "#e5ea9e",
-    "tree": "#4c5a2e", "treeDark": "#30401e", "treeLight": "#6d7a3a",
-    "sand": "#f4ebc8", "sandLip": "#d8caa0",
-    "water": "#164a6a", "waterDeep": "#0e3650", "waterLight": "#5aa6cc",
-    "sky": "#101a28", "frame": "#a89a50"
+    "roughDark": "#7e8a3c",
+    "rough": "#879440",
+    "roughLight": "#919e46",
+    "fairwayDark": "#b1b65c",
+    "fairway": "#b9be62",
+    "fairwayLight": "#c3c86a",
+    "fringe": "#cdd27a",
+    "greenDark": "#d4da86",
+    "green": "#dce292",
+    "greenLight": "#e5ea9e",
+    "tree": "#4c5a2e",
+    "treeDark": "#30401e",
+    "treeLight": "#6d7a3a",
+    "sand": "#f4ebc8",
+    "sandLip": "#d8caa0",
+    "water": "#164a6a",
+    "waterDeep": "#0e3650",
+    "waterLight": "#5aa6cc",
+    "sky": "#101a28",
+    "frame": "#a89a50"
   },
-  "golden": { "fairway": "#d0b860", "fairwayLight": "#dcc468", "fairwayDark": "#c4ae58", "rough": "#9a8a3e", "sky": "#2e1c10", "frame": "#c08a30" },
-  "weather": { "rain": 0.05, "overcast": 0.15, "sea": 0.5, "haze": 0.3 },
-  "sim": { "carry": 1.02, "roll": 1.6 },
-  "wardrobe": { "hat": "visor", "shorts": true },
-  "props": { "birds": 0.6, "benches": true, "ballWasher": true, "rakes": true, "waste": true }
+  "golden": {
+    "fairway": "#d0b860",
+    "fairwayLight": "#dcc468",
+    "fairwayDark": "#c4ae58",
+    "rough": "#9a8a3e",
+    "sky": "#2e1c10",
+    "frame": "#c08a30"
+  },
+  "weather": {
+    "rain": 0.05,
+    "overcast": 0.15,
+    "sea": 0.5,
+    "haze": 0.3,
+    "flowers": 0.8
+  },
+  "sim": {
+    "carry": 1.02,
+    "roll": 1.6
+  },
+  "wardrobe": {
+    "hat": "visor",
+    "shorts": true
+  },
+  "props": {
+    "birds": 0.6,
+    "benches": true,
+    "ballWasher": true,
+    "rakes": true,
+    "waste": true
+  }
 }

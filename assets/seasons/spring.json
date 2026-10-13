@@ -2,15 +2,48 @@
   "name": "spring",
   "notes": "Lush and wet. Saturated greens, blossom in the treeline, showers with a caddie umbrella. 'palette' entries override the theme's colours by role name; 'golden' overrides apply during golden hour on top of that; 'weather' values are probabilities per hole; 'sim' scales shot physics; 'wardrobe' picks sprite details.",
   "palette": {
-    "roughDark": "#2c6c22", "rough": "#327a26", "roughLight": "#38842a",
-    "fairwayDark": "#5db13c", "fairway": "#63b840", "fairwayLight": "#6cc247",
-    "fringe": "#8dd25a", "greenDark": "#9ae266", "green": "#a8ec70", "greenLight": "#b9f47e",
-    "treeLight": "#e9a7c9", "tree": "#2a5a2a", "treeDark": "#163a18",
-    "waterLight": "#5a95e8", "sky": "#0d1420"
+    "roughDark": "#2c6c22",
+    "rough": "#327a26",
+    "roughLight": "#38842a",
+    "fairwayDark": "#5db13c",
+    "fairway": "#63b840",
+    "fairwayLight": "#6cc247",
+    "fringe": "#8dd25a",
+    "greenDark": "#9ae266",
+    "green": "#a8ec70",
+    "greenLight": "#b9f47e",
+    "treeLight": "#e9a7c9",
+    "tree": "#2a5a2a",
+    "treeDark": "#163a18",
+    "waterLight": "#5a95e8",
+    "sky": "#0d1420"
   },
-  "golden": { "fairway": "#7fb84a", "fairwayLight": "#8fc452", "fairwayDark": "#74ad44", "green": "#c0e07a", "sky": "#2a1a12", "frame": "#b08a3a" },
-  "weather": { "rain": 0.35, "overcast": 0.3, "blossom": 0.5 },
-  "sim": { "carry": 0.98, "roll": 0.7 },
-  "wardrobe": { "hat": "cap", "umbrellaInRain": true },
-  "props": { "birds": 0.5, "benches": true, "ballWasher": true, "rakes": true }
+  "golden": {
+    "fairway": "#7fb84a",
+    "fairwayLight": "#8fc452",
+    "fairwayDark": "#74ad44",
+    "green": "#c0e07a",
+    "sky": "#2a1a12",
+    "frame": "#b08a3a"
+  },
+  "weather": {
+    "rain": 0.35,
+    "overcast": 0.3,
+    "blossom": 0.5,
+    "flowers": 0.8
+  },
+  "sim": {
+    "carry": 0.98,
+    "roll": 0.7
+  },
+  "wardrobe": {
+    "hat": "cap",
+    "umbrellaInRain": true
+  },
+  "props": {
+    "birds": 0.5,
+    "benches": true,
+    "ballWasher": true,
+    "rakes": true
+  }
 }
