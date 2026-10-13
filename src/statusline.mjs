@@ -138,9 +138,14 @@ function finish(raw) {
   for (const t of timers) { try { clearTimeout(t); } catch {} }
   try { main(raw); }
   catch (e) {
-    // Never-fail: print nothing (a blank status line), never a trace.
-    try { process.stdout.write('\n'); } catch {}
-    if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) { try { process.stderr.write(String((e && e.stack) || e) + '\n'); } catch {} }
+    // Never-fail, but never invisible: no stack trace in the status line, yet a
+    // real bug must not vanish into a blank line that looks like the disabled
+    // state. So always append to errors.log, show one quiet dim marker, and
+    // surface the full stack on stderr under trace.
+    const msg = String((e && e.stack) || e).replace(/\s+/g, ' ').slice(0, 300);
+    try { fs.appendFileSync(path.join(golfHome(), 'errors.log'), `${new Date().toISOString()}\t${msg}\n`); } catch {}
+    try { process.stdout.write('\x1b[2m· golf error (CCGOLF_TRACE for detail)\x1b[0m\n'); } catch { try { process.stdout.write('\n'); } catch {} }
+    if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) { try { process.stderr.write(msg + '\n'); } catch {} }
   }
   // Let the process exit naturally so buffered stdout flushes; removing the
   // stdin listener drops the only thing keeping the event loop alive. Calling
