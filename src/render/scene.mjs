@@ -506,8 +506,9 @@ function renderWorking(ctx) {
   // overlaps. Below nine rows the frame is dropped; below twelve, the card.
   const framed = rows >= 9;
   // The scorecard/leaderboard costs three rows; only take them once the
-  // picture can still give the 5-row golfer headroom (>= 7 rows left).
-  const cardRows = rows >= 13 && cols >= 60 ? 3 : 0;
+  // picture can still give the 5-row golfer headroom (>= 7 rows left) and the
+  // terminal is wide enough for the card to be legible.
+  const cardRows = rows >= 13 && cols >= 64 ? 3 : 0;
   const picRows = rows - 1 - cardRows - (framed ? 2 : 0);
   const gutter = framed ? 1 : 0;
   const W = cols * tier.sx, H = picRows * tier.sy;
@@ -515,9 +516,16 @@ function renderWorking(ctx) {
   const view = chooseView(h, hole);
   const cam = camera(view, h, hole, cols, picRows, gutter, tier);
   const dbg = {};
+  // Responsive drop ladder (widest to narrowest): the hole view always draws;
+  // then, as width shrinks, elements drop in reverse priority order —
+  // commentary (cols<120, handled in statusRow) -> minimap (cols<90) ->
+  // scorecard (cols<64 or rows<13) -> status chips stay -> compact single line
+  // (cols<40, in renderScene). This keeps every line under Claude Code's
+  // cli-truncate container (one overflowing line drops all lines after it;
+  // docs/PRIOR-ART.md finding 3), so nothing ever clips or wraps.
   drawGround(c, hole, cam.m, R, ctx.seedInt);
   if (ctx.season) drawHoleProps(c, hole, cam.m, R, tier, cad, pointAt, ctx.season.data);
-  if (cols >= 60 && picRows >= 4) {
+  if (cols >= 90 && picRows >= 5) {
     const g = golferWorld(h);
     drawMinimap(c, hole, h, cam.m, R, tier, cam.win, cam.m.px(g.x));
   }
