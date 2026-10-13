@@ -148,8 +148,11 @@ function drawGround(c, hole, m, R, seedInt) {
         }
       }
       if (v < 0) {
+        // Organic edge: wobble the green/collar radius with the noise tile so
+        // it is not a clean oval (ART-DIRECTION rule 7).
+        const wob = (roughNoise(wx * 0.5, wy * 0.5, seedInt + 9) - 0.5) * 0.3;
         const gx = (wx - g.x) / g.rx, gy = (wy - g.y) / g.ry;
-        if (gx * gx + gy * gy <= 1) {
+        if (gx * gx + gy * gy <= 1 + wob) {
           v = (Math.floor((wx + wy) / stripeG) & 1) ? R.greenLight : R.greenDark;
           if (tierX !== null) {
             if (Math.abs(wx - tierX) < u * 0.6) v = R.fringe;
@@ -157,7 +160,7 @@ function drawGround(c, hole, m, R, seedInt) {
           }
         } else {
           const fx = (wx - g.x) / gPadX, fy = (wy - g.y) / gPadY;
-          if (fx * fx + fy * fy <= 1) {
+          if (fx * fx + fy * fy <= 1 + wob) {
             v = (g.elevated && wx < g.x - g.rx * 0.2) ? R.fairwayDark : R.fringe;
           } else {
             let bestDist = Infinity, s = 0, d = 0;
@@ -192,14 +195,42 @@ function drawGround(c, hole, m, R, seedInt) {
       px[rowOff + x] = v;
     }
   }
+  // Trees: overlapping two-tone clumps (light crown upper-left, dark lower-
+  // right), trunk nubs, then ONE black outline + drop shadow traced around the
+  // merged mass (not per tree, so overlaps read as a continuous wall, not a
+  // grid of rings). Light is from the upper-left. (ART-DIRECTION rules 1, 3, 8.)
+  const isTree = v => v === R.treeDark || v === R.tree || v === R.treeLight;
+  const isTurf = v => v === R.rough || v === R.roughDark || v === R.roughLight || v === R.fairway || v === R.fairwayDark || v === R.fairwayLight || v === R.fringe;
   for (const t of hole.trees) {
     const cx = m.px(t.x), cy = m.py(t.y);
-    const rx = Math.max(0.6, m.rx(t.r)), ry = Math.max(0.6, m.ry(t.r));
-    if (cx + rx < 0 || cx - rx > W || cy + ry < 0 || cy - ry > H) continue;
-    fillEllipse(c, cx, cy, rx, ry, R.treeDark);
-    if (rx >= 1.5) fillEllipse(c, cx - rx * 0.3, cy - ry * 0.3, rx * 0.5, ry * 0.5, R.treeLight);
-    else if (rx >= 0.9) set(c, Math.round(cx - 0.5), Math.round(cy - 0.5), R.treeLight);
-    if (rx >= 1.5) { const ox = Math.round(cx + rx * 0.55), oy = Math.round(cy + ry * 0.6); if (get(c, ox, oy) === R.treeDark) set(c, ox, oy, R.outline); }
+    const rx = Math.max(0.7, m.rx(t.r)), ry = Math.max(0.7, m.ry(t.r));
+    if (cx + rx < -1 || cx - rx > W || cy + ry < -1 || cy - ry > H) continue;
+    fillEllipse(c, cx, cy, rx, ry, R.tree);
+    fillEllipse(c, cx + rx * 0.35, cy + ry * 0.35, rx * 0.6, ry * 0.6, R.treeDark);
+    if (rx >= 1.2) fillEllipse(c, cx - rx * 0.3, cy - ry * 0.4, rx * 0.5, ry * 0.5, R.treeLight);
+    else set(c, Math.round(cx - 0.4), Math.round(cy - 0.4), R.treeLight);
+    if (t.r >= 5) { const tx = Math.round(cx), ty = Math.round(cy + ry); set(c, tx, ty, R.trunk); if (m.ky >= 1.3) set(c, tx, ty + 1, R.trunk); }
+  }
+  // Boundary pass: a tree cell whose right/down neighbour is turf gets a dark
+  // edge there (outline + shadow in one, consistent down-right).
+  for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+    if (!isTree(px[y * W + x])) continue;
+    const r = px[y * W + x + 1], d = px[(y + 1) * W + x];
+    if (isTurf(r)) px[y * W + x + 1] = R.outline;
+    if (isTurf(d)) px[(y + 1) * W + x] = R.outline;
+  }
+  // Green: a soft down-right drop shadow where the collar meets turf, and a
+  // small slope chevron on the surface (ART-DIRECTION rule 7/8).
+  for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+    if (px[y * W + x] !== R.fringe) continue;
+    if (isTurf(px[y * W + x + 1])) px[y * W + x + 1] = R.fairwayDark;
+    if (isTurf(px[(y + 1) * W + x])) px[(y + 1) * W + x] = R.fairwayDark;
+  }
+  {
+    const dir = g.tier === null ? -1 : (g.tier < 0 ? -1 : 1); // chevron points to the low side
+    const axc = Math.round(m.px(g.x + dir * g.rx * 0.35)), ayc = Math.round(m.py(g.y - g.ry * 0.25));
+    const on = (x, y) => { const p = px[y * W + x]; return p === R.green || p === R.greenDark || p === R.greenLight; };
+    for (let k = -1; k <= 1; k++) { const x = axc + dir * Math.abs(k), y = ayc + k; if (x >= 0 && x < W && y >= 0 && y < H && on(x, y)) px[y * W + x] = R.greenDark; }
   }
   for (const s of hole.stakes) {
     const x = Math.round(m.px(s.x)), y = Math.round(m.py(s.y));
