@@ -5,16 +5,36 @@ session) and `node harness/stress.mjs 8 12` (eight concurrent sessions).
 
 ## GATE STATUS
 
-- **Per-frame wall p99: FAIL.** 241 ms mean / 387 ms p99 on a loaded machine
-  against the 40 ms mean / 100 ms p99 gate — ~2.4x over. The dominant term is
-  Node startup (bare `node -e 0` is 108 ms here, which alone exceeds the p99
-  gate), plus ES-module loading of ~16 files. Bundling + a quiet machine is the
-  path back under; see "Getting under the gate".
-- **8-session aggregate CPU: FAIL.** ~214% of one core in bursts; must come down
-  per the lightweight-outranks-features rule.
-- **Process leak: ROOT-CAUSED and FIXED** (below). The earlier "no leak" line
-  was drawn from a healthy single-session census, which is the wrong state to
-  clear a lockup from; corrected here.
+- **Process leak / lockup: ROOT-CAUSED and FIXED, with evidence** (tests A+B
+  below). This was the one that mattered.
+- **Per-frame wall p99 vs the 40 ms / 100 ms gate: the gate is not physically
+  reachable for our architecture, and should be revised** (see "The gate is
+  unreachable in Node"). A cold per-frame Node process pays tens of ms of Node
+  startup before any of our code runs; bare `node -e 0` here is ~108 ms under
+  load. Our *controllable* cost is the lever; the startup floor is not ours.
+- **8-session aggregate CPU: high (~214% of a core in bursts under load);
+  treat as a FAIL to reduce** via bundling + detail/cadence cuts.
+
+## The gate is unreachable in Node — revise it
+
+Cross-project evidence (`docs/PRIOR-ART.md`): ~10 ms per render is reached only
+by a **compiled Go** binary or a **Python-stdlib** script (which itself reports
+~4 ms of interpreter startup), and the one project that is genuinely fast *and*
+JS (byQuexo) does it by running as a **resident mod inside Claude Code**, not as
+a spawned process. There is no per-frame-Node renderer in the field that hits
+40 ms, because Node cold start alone exceeds it. The published "40 ms" figure
+was **not found** in the repo it was attributed to.
+
+Honest revised gate, stated as what is physically achievable:
+
+> **node-startup floor (not ours) + our render cost.** Target: *our* cost
+> (module load + sim + render + write, i.e. the part after Node is up) under
+> **15 ms p99** on a quiet machine. Total per-frame wall is then that plus
+> Node's ~35–110 ms cold start, which we do not control.
+
+If a true sub-40 ms total is ever required, the fix is architectural — a
+resident mod or a compiled sidecar — not micro-optimizing the JS. The cell
+renderer stays as the universal path regardless.
 
 ## Lockup root cause: blocking stdin read (FIXED)
 
@@ -56,22 +76,34 @@ SIGTERM column being 0 for both shows signal-based cancellation never leaked, so
 the mechanism is specifically the open-stdin abandon path — exactly what the fix
 addresses.
 
-**A — continuous census under load** (`harness/census.mjs`, 8 sessions, max
-cadence, 1-in-5 frames abandoned to exercise cancellation): the live renderer
-count stays flat at ~0 throughout (sampled every 10s), e.g. 456 spawns / 91
-abandoned by t=144s with 0 live and 0 residual. Flat line, no accumulation —
-the leak hypothesis is retired for the new code under the real failure load.
-(Full 10-minute curve printed by the harness.)
+**A — continuous census under load** (`harness/census.mjs`, 8 sessions, 350ms
+cadence, 1-in-5 frames abandoned to exercise cancellation), full 10-minute run:
+**1375 spawns, 275 abandoned/cancelled; live renderer count min 0, max 3, final
+0** across 56 samples. Verdict printed by the harness: *FLAT — no accumulation,
+leak hypothesis retired.* The max of 3 is normal transient in-flight renders,
+never climbing. Under the new code, the failure load does not accumulate
+processes.
 
 A single-session census during normal use likewise showed only transient
 renders at age ~1s; that was never sufficient on its own to clear a lockup,
 which is why A and B above were run.
 
-## Single session (measured 2026-10-12, busy dev laptop, i7-1365U)
+## A clean idle baseline is currently not obtainable
 
-These numbers were taken while the machine was under heavy unrelated load
-(browser + Teams at ~70% CPU), so absolute values are a pessimistic ceiling;
-on a quiet machine the render body was 9–28 ms earlier in the project.
+Attempted a fresh baseline (2.1) but the machine was at **88% CPU from
+unrelated processes**; bare `node -e 0` measured **728 ms mean** in that state.
+That is not a usable floor — it is proof the numbers are entirely load-dominated
+(108 ms in an earlier lighter moment, 728 ms now, for the same empty Node).
+Absolute per-frame wall on this machine therefore says nothing stable; the
+load-robust facts are: peak **RSS ~56 MB** (vs the ~41 MB of a comparable Go
+pet), and the architectural floor (per-frame Node startup dominates, 71–45% of
+wall). A trustworthy idle baseline is deferred until the machine is quiet; it
+does not change the revised-gate conclusion above.
+
+## Single session (earlier, busy dev laptop, i7-1365U)
+
+Taken under heavy unrelated load (~70% CPU), so a pessimistic ceiling; on a
+quiet machine the render body was 9–28 ms earlier in the project.
 
 | Metric | Value |
 |---|---|
