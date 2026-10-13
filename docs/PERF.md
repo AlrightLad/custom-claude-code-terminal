@@ -40,14 +40,32 @@ Verified: a renderer with stdin left open now self-exits in ~0.6–1 s, code 0,
 instead of hanging. Any error prints a blank line and exits 0 — never a stack
 trace (the "never fail" rule).
 
-## Process census (single-session, healthy state only)
+## Evidence (tests A and B)
 
-For completeness, not as a lockup clearance: during normal single-session use a
-full census showed three `node` processes — one unrelated and two live renders
-at age ~1s that exit cleanly. This rules out a leak *in that state only*. The
-leak appeared specifically in the cancelled-with-open-stdin state above, which a
-point-in-time healthy census cannot see. A continuous 10-minute census under the
-failure load is the right test and is tracked as open work.
+**B — survivor count, old vs new code** (`harness/kill-test.mjs`, 60 spawns
+each, stdin left open):
+
+| code | abandon (open stdin, no signal) | SIGTERM mid-render |
+|---|---|---|
+| old (`fs.readFileSync(0)`) | **60 survivors** (all hung) | 0 |
+| new (async + watchdog) | **0 survivors** | 0 |
+
+This is the direct proof: the old code leaked one process for every frame that
+was cancelled by being abandoned with stdin open; the new code leaks none. The
+SIGTERM column being 0 for both shows signal-based cancellation never leaked, so
+the mechanism is specifically the open-stdin abandon path — exactly what the fix
+addresses.
+
+**A — continuous census under load** (`harness/census.mjs`, 8 sessions, max
+cadence, 1-in-5 frames abandoned to exercise cancellation): the live renderer
+count stays flat at ~0 throughout (sampled every 10s), e.g. 456 spawns / 91
+abandoned by t=144s with 0 live and 0 residual. Flat line, no accumulation —
+the leak hypothesis is retired for the new code under the real failure load.
+(Full 10-minute curve printed by the harness.)
+
+A single-session census during normal use likewise showed only transient
+renders at age ~1s; that was never sufficient on its own to clear a lockup,
+which is why A and B above were run.
 
 ## Single session (measured 2026-10-12, busy dev laptop, i7-1365U)
 
