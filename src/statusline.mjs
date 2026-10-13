@@ -14,6 +14,16 @@ import { readRoster, stepAgents, activeAgentCount } from './sim/agents.mjs';
 import { golfHome, ensureDirs, loadState, saveState, readMode, updateCareer } from './state.mjs';
 import { clamp, hash32 } from './util/rng.mjs';
 
+// Diagnostics: `node src/statusline.mjs --doctor` (or --fonts) prints a glyph &
+// font report for the user's OWN terminal and exits. Kept out of the render hot
+// path by a lazy import — a normal frame never evaluates this branch or loads
+// the module. Must come before the stdin/watchdog bootstrap below.
+if (process.argv.includes('--doctor') || process.argv.includes('--fonts')) {
+  const { runDoctor } = await import('./doctor.mjs');
+  runDoctor(process.env);
+  process.exit(0);
+}
+
 const T0 = Date.now();
 
 // CCGOLF_* is the documented prefix; GOLF_* still works for older installs.
