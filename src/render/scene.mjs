@@ -370,8 +370,28 @@ function drawAgents(c, st, m, R, tier) {
   }
 }
 
+// The caddie's umbrella in the rain (spring wardrobe.umbrellaInRain): a canopy
+// ('U', a bright colour) on a short shaft ('k', the outline), held over the
+// caddie's head. One consistent light edge is implicit at this size.
+const UMBRELLA = {
+  sextant: ['.UUUUU.', 'UUUUUUU', 'U.U.U.U', '...k...', '...k...'],
+  halfblock: ['.UUU.', 'UUUUU', '..k..'],
+};
+
+// Season wardrobe applied to a pose without changing its silhouette (chars are
+// recoloured, never removed, so the shadow and the silhouette gate are
+// unaffected). Shorts bare the lower legs (lower pant rows -> skin 'f').
+function applyWardrobe(pose, wardrobe) {
+  if (!wardrobe || !wardrobe.shorts) return pose;
+  const rows = pose.slice();
+  const pant = [];
+  for (let i = 0; i < rows.length; i++) if (rows[i].includes('p')) pant.push(i);
+  for (let j = Math.ceil(pant.length / 2); j < pant.length; j++) rows[pant[j]] = rows[pant[j]].replace(/p/g, 'f');
+  return rows;
+}
+
 // Returns the sprite's bounding box so the caller can assert it fits.
-function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg, season) {
+function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg, season, weather) {
   const shots = h.shots;
   for (let i = 0; i < shots.length - 1; i++) drawTrace(c, shots[i], m, 1, R.traceOld, R.traceOld);
   const cur = shots[shots.length - 1];
@@ -418,10 +438,17 @@ function drawPlay(c, h, hole, m, cad, now, tier, R, sprites, dbg, season) {
     const cs = sprites.caddie.stand;
     const cx0 = faceLeft ? sx + bw + 2 * tier.sx : sx - cs[0].length - 2 * tier.sx;
     const cy0 = sy + bh - cs.length;
-    if (cx0 >= minX && cx0 + cs[0].length <= maxX) { shadow(c, cs, cx0, cy0, R.shadow, faceLeft); blit(c, cs, cx0, cy0, caddieMap(cad, R), faceLeft); }
+    if (cx0 >= minX && cx0 + cs[0].length <= maxX) {
+      shadow(c, cs, cx0, cy0, R.shadow, faceLeft); blit(c, cs, cx0, cy0, caddieMap(cad, R), faceLeft);
+      if (weather && weather.rain && season && season.data.wardrobe && season.data.wardrobe.umbrellaInRain) {
+        const um = tier.name === 'halfblock' ? UMBRELLA.halfblock : UMBRELLA.sextant;
+        const ux = cx0 + Math.round((cs[0].length - um[0].length) / 2), uy = cy0 - um.length + 1;
+        if (ux >= minX && ux + um[0].length <= maxX && uy >= 0) blit(c, um, ux, uy, { U: R.flag, k: R.outline }, false);
+      }
+    }
   }
   shadow(c, pose, sx, sy, R.shadow, faceLeft);
-  blit(c, pose, sx, sy, map, faceLeft);
+  blit(c, applyWardrobe(pose, season && season.data.wardrobe), sx, sy, map, faceLeft);
   // Winter breath puff while standing.
   if (season && season.data.wardrobe && season.data.wardrobe.breath && (h.phase === 'stand' || h.phase === 'address' || h.phase === 'tee') && Math.floor(now / 1500) % 3 === 0) {
     const hx = faceLeft ? sx - 1 : sx + bw, hy = sy + 1;
@@ -591,7 +618,7 @@ function renderWorking(ctx) {
     const g = golferWorld(h);
     drawMinimap(c, hole, h, cam.m, R, tier, cam.win, cam.m.px(g.x));
   }
-  const box = drawPlay(c, h, hole, cam.m, cad, now, tier, R, sprites, dbg, ctx.season);
+  const box = drawPlay(c, h, hole, cam.m, cad, now, tier, R, sprites, dbg, ctx.season, ctx.weather);
   // Other golfers (subagents) sharing the hole: a coloured ball + initial.
   if (ctx.agents) drawAgents(c, st, cam.m, R, tier);
   if (ctx.season && ctx.season.data.props && ctx.season.data.props.birds) drawBirds(c, now, ctx.seedInt, R, tier, ctx.season.data.props.birds);

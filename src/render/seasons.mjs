@@ -65,7 +65,7 @@ export function weatherFor(season, sid, holeNo, now) {
   const rnd = rngFor(sid, 'weather', holeNo, day);
   const w = season.data.weather || {};
   const roll = rnd();
-  return {
+  const out = {
     rain: w.rain ? roll < w.rain : false,
     snow: w.snow ? rnd() < w.snow : false,
     leaves: w.leaves ? rnd() < w.leaves : false,
@@ -75,6 +75,15 @@ export function weatherFor(season, sid, holeNo, now) {
     flowers: w.flowers ? rnd() < w.flowers : false,
     lowSun: !!w.lowSun, longShadows: !!w.longShadows,
   };
+  // CCGOLF_WEATHER forces weather for deterministic screenshots and testing:
+  // a comma-separated list sets those flags on, "clear"/"none" clears them all.
+  const force = process.env.CCGOLF_WEATHER || process.env.GOLF_WEATHER;
+  if (force) {
+    const want = force.toLowerCase().split(/[,\s]+/).filter(Boolean);
+    if (want.includes('clear') || want.includes('none')) for (const k of ['rain', 'snow', 'leaves', 'overcast', 'blossom', 'flowers']) out[k] = false;
+    for (const k of want) if (k in out) out[k] = true;
+  }
+  return out;
 }
 
 // Particles, reworked so they read as weather, not confetti (ART-DIRECTION
