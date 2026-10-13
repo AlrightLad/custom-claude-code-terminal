@@ -12,11 +12,11 @@
     },
     {
       "name": "waterDeep",
-      "hex": "#08242a"
+      "hex": "#061a1e"
     },
     {
       "name": "water",
-      "hex": "#0e3a40"
+      "hex": "#0a2a2e"
     },
     {
       "name": "waterLight",
@@ -36,15 +36,15 @@
     },
     {
       "name": "roughDark",
-      "hex": "#9b6c2d"
+      "hex": "#735021"
     },
     {
       "name": "rough",
-      "hex": "#a4722f"
+      "hex": "#795423"
     },
     {
       "name": "roughLight",
-      "hex": "#ad7a34"
+      "hex": "#805a26"
     },
     {
       "name": "fairwayDark",
@@ -80,7 +80,7 @@
     },
     {
       "name": "sand",
-      "hex": "#f6e6c0"
+      "hex": "#fbf4e3"
     },
     {
       "name": "white",

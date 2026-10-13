@@ -95,7 +95,10 @@ function drawGround(c, hole, m, R, seedInt) {
   const W = c.w, H = c.h;
   const u = m.u;
   const edge = u * 0.9;
-  const stripeF = Math.max(4 * u, 6), stripeG = Math.max(1.5 * u, 2);
+  // Fairway stripes run ALONG the line of play (banded by lateral offset d) at
+  // low contrast (fairway base vs fairwayDark). Green stripes stay finer/
+  // diagonal. (ART-DIRECTION rule 6.)
+  const stripeL = Math.max(3 * u, 5), stripeG = Math.max(1.2 * u, 2);
   const lipW = u * 1.0;
   const dyWorld = u / m.ky;
   const g = hole.green;
@@ -115,7 +118,7 @@ function drawGround(c, hole, m, R, seedInt) {
   const nseg = segs.length;
   const lengthEnd = hole.length - 3;
   const px = c.px;
-  const RD = R.roughDark, RM = R.rough, RL = R.roughLight, FD = R.fairwayDark, FL = R.fairwayLight;
+  const RD = R.roughDark, RM = R.rough, RL = R.roughLight, FD = R.fairwayDark, FB = R.fairway;
   for (let y = 0; y < H; y++) {
     const wy = m.wy(y);
     const rowOff = y * W;
@@ -177,8 +180,8 @@ function drawGround(c, hole, m, R, seedInt) {
             const apron = s > hole.length - g.rx - apronLen && s <= hole.length && ad < hb * 0.7;
             if (s >= -5 && s <= 6 && ad <= 5.5) v = R.tee;
             else if (apron) v = R.fairwayLight;
-            else if (inPlay && ad < hb - edge) v = (Math.floor(s / stripeF) & 1) ? FL : FD;
-            else if (inPlay && ad < hb + edge && bayer(x, y) >= (ad - (hb - edge)) / (2 * edge)) v = (Math.floor(s / stripeF) & 1) ? FL : FD;
+            else if (inPlay && ad < hb - edge) v = (Math.floor(d / stripeL) & 1) ? FB : FD;
+            else if (inPlay && ad < hb + edge && bayer(x, y) >= (ad - (hb - edge)) / (2 * edge)) v = (Math.floor(d / stripeL) & 1) ? FB : FD;
             else {
               const n = roughNoise(wx, wy, seedInt);
               v = n < 0.33 ? RD : n < 0.7 ? RM : RL;

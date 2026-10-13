@@ -13,7 +13,7 @@ import { loadPalette, luminance } from '../src/render/palette.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const dir = path.join(ROOT, 'assets', 'palettes');
 const LADDER = ['water', 'tree', 'rough', 'fairway', 'green', 'sand', 'ball'];
-const MIN_STEP = 0.025; // relative luminance gap between neighbours
+const MIN_STEP = 0.04;  // widened per ART-DIRECTION rule 5
 let failed = false;
 
 for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort()) {
