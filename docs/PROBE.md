@@ -368,12 +368,31 @@ text). Neither carries a bitmap. DCS (Sixel) and APC (the Kitty graphics
 protocol) are the only pixel carriers in any terminal, and both are tokenized
 and dropped. There is no passthrough channel to exploit.
 
-### H.3 / G'.4 — the honest conclusion
+### H.3 / G'.4 — conclusion, corrected for the TTY side-channel
 
-Half-block / quadrant / sextant cell art in 24-bit colour **is** the product.
-There is no technical lever left that raises the ceiling above two colours per
-cell from inside the status line, because the host re-renders captured output
-as cells by design, and any protocol anyone invents hits the same tokenizer.
+Scope correction (2026-10-13): H.1 tested the **stdout** channel only. There is
+a second channel it did not test — writing graphics escapes to the real
+**terminal device** (a TTY file descriptor), not to stdout. A shipping project,
+andywxy1/claude-pet, does exactly this: it opens the user's terminal fd and
+writes Kitty-graphics APC sequences there while returning plain text on stdout,
+so the image floats above the TUI and never meets the tokenizer. So the earlier
+"no technical lever exists" was too strong; it is true for stdout, false for the
+TTY side-channel. See `docs/PRIOR-ART.md`, finding 2.
+
+Where that lever works and does not:
+- **POSIX + Kitty graphics protocol (kitty, Ghostty, WezTerm):** the TTY bypass
+  works; real pixel sprites are possible. Untested here (no such terminal on
+  this machine) but demonstrated in production elsewhere.
+- **Windows (this project's target):** it does **not** help. Windows Terminal
+  has no Kitty protocol, and no known project implements a Windows `CONOUT$`
+  graphics side-channel; andywxy1 is POSIX-only (it shells out to `ps` and opens
+  `/dev/<tty>`). Sixel through the status line is still stripped (P0.4).
+
+So, on Windows and any non-Kitty terminal, half-block / quadrant / sextant cell
+art in 24-bit colour **is** the product and the ceiling. The TTY+Kitty path is a
+worthwhile future enhancement for POSIX users, with the cell renderer as the
+universal fallback. The remaining quality on the universal path comes from
+craft, not a protocol.
 Effort now goes into craft: better sprites, one consistent light direction,
 flat-colour discipline, animation easing, and the row budget below. A draft
 upstream feature request (opt-in graphics passthrough with reserved rows) is
