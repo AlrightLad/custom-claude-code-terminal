@@ -8,6 +8,7 @@ import zlib from 'node:zlib';
 import { TIERS } from '../src/render/tiers.mjs';
 import { spriteSet } from '../src/render/sprites.mjs';
 import { miniSet } from '../src/render/idle.mjs';
+import { propSet, propMap } from '../src/render/props.mjs';
 import { loadPalette } from '../src/render/palette.mjs';
 
 const tierName = process.argv[2] || 'sextant';
@@ -19,19 +20,27 @@ const pal = loadPalette('augusta');
 const R = pal.roles;
 const MAP = { h: R.white, f: R.skin, s: R.shirts[0], p: R.navy, k: R.outline, c: R.gray, C: R.gray, b: R.bags[0], B: R.gray,
   r: R.cart, W: R.cart, w: R.gray, t: R.tree, T: R.treeLight, o: R.trunk, m: R.white };
+// Props carry their own colour legend ('p' is a white post here, not navy
+// pants), so each item renders the coloured sheet through its own map.
+const PMAP = propMap(R, { bag: 0 });
+const props = propSet(tier);
 
+// [name, sprite, colourMap]
 const items = [];
-for (const [k, v] of Object.entries(set.golfer)) items.push(['golfer.' + k, v]);
-for (const [k, v] of Object.entries(set.caddie)) items.push(['caddie.' + k, v]);
-for (const [k, v] of Object.entries(set.cart)) items.push(['cart.' + k, v]);
-items.push(['tree', set.tree]);
-items.push(['marker', set.marker]);
+for (const [k, v] of Object.entries(set.golfer)) items.push(['golfer.' + k, v, MAP]);
+for (const [k, v] of Object.entries(set.caddie)) items.push(['caddie.' + k, v, MAP]);
+for (const [k, v] of Object.entries(set.cart)) items.push(['cart.' + k, v, MAP]);
+items.push(['tree', set.tree, MAP]);
+items.push(['marker', set.marker, MAP]);
+// Environment props (ART-DIRECTION rules 1/8: each should read as a clean
+// silhouette with its contact edge). Gated here so a broken prop shape shows.
+for (const [k, v] of Object.entries(props.props)) items.push(['prop.' + k, v, PMAP]);
 // idle-strip mini sprites follow, separated by a gap
-for (const [k, v] of Object.entries(mini.golfer)) items.push(['mini.golfer.' + k, v]);
-for (const [k, v] of Object.entries(mini.caddie)) items.push(['mini.caddie.' + k, v]);
-for (const [k, v] of Object.entries(mini.cart)) items.push(['mini.cart.' + k, v]);
-items.push(['mini.tree', mini.tree]);
-items.push(['mini.marker', mini.marker]);
+for (const [k, v] of Object.entries(mini.golfer)) items.push(['mini.golfer.' + k, v, MAP]);
+for (const [k, v] of Object.entries(mini.caddie)) items.push(['mini.caddie.' + k, v, MAP]);
+for (const [k, v] of Object.entries(mini.cart)) items.push(['mini.cart.' + k, v, MAP]);
+items.push(['mini.tree', mini.tree, MAP]);
+items.push(['mini.marker', mini.marker, MAP]);
 
 // subpixel aspect: width : height = (1/sx) : (2/sy)
 const PX = 8;
@@ -43,13 +52,13 @@ const sheetH = maxH * 2 + gap * 3;
 const img = Buffer.alloc(totalW * sheetH * 3, 255);
 function put(x, y, c) { if (x < 0 || y < 0 || x >= totalW || y >= sheetH) return; const o = (y * totalW + x) * 3; img[o] = c[0]; img[o + 1] = c[1]; img[o + 2] = c[2]; }
 let x0 = gap;
-for (const [, s] of items) {
+for (const [, s, map] of items) {
   for (let r = 0; r < s.length; r++) for (let cI = 0; cI < s[r].length; cI++) {
     const ch = s[r][cI];
     if (ch === '.') continue;
     for (let dy = 0; dy < ph; dy++) for (let dx = 0; dx < pw; dx++) {
       put(x0 + cI * pw + dx, gap + r * ph + dy, [0, 0, 0]);
-      const col = pal.rgb[MAP[ch] ?? R.gray];
+      const col = pal.rgb[(map || MAP)[ch] ?? R.gray];
       put(x0 + cI * pw + dx, gap * 2 + maxH + r * ph + dy, col);
     }
   }
