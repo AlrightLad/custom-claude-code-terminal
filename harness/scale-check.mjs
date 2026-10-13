@@ -27,7 +27,7 @@ for (const [cols, lines, tier] of configs) {
       env: { ...process.env, CCGOLF_HOME: home, CCGOLF_MODE: 'WORKING', CCGOLF_NOW: String(now), COLUMNS: String(cols), LINES: String(lines), CCGOLF_GLYPHS: tier, CCGOLF_DEBUG: '1' },
     });
     const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
-    const m = /u=([\d.]+)y\/col view=(\w+) golfer=(\d+)u\/(\d+)y green=([\d.]+)u\/(\d+)y/.exec(plain);
+    const m = /u=([\d.]+)y\/col view=(\w+)(?: rake=[\d.]+)? golfer=(\d+)u\/(\d+)y green=([\d.]+)u\/(\d+)y/.exec(plain);
     if (!m) continue;
     checked++;
     const u = Number(m[1]), view = m[2], golferU = Number(m[3]), greenU = Number(m[5]);

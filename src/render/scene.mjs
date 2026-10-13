@@ -75,17 +75,32 @@ function roughNoise(wx, wy, seedInt) {
 
 // World yards -> canvas subpixels for a window whose top-left is (minX, minY)
 // at u yards per unit, inset by gutter cells on the left.
-function windowMap(tier, minX, minY, u, gutterCells) {
+function windowMap(tier, minX, minY, u, gutterCells, rake, H) {
   const kx = tier.sx, ky = tier.sy / 2;
   const gx = gutterCells * kx;
+  const k = rake || 0;
+  const p = 1 + k;                      // warp exponent; k=0 -> p=1 -> flat
+  const Hh = H || 1;
+  const viewH = Hh / ky * u;            // world units spanned top to bottom
+  // Raked top-down (ART-DIRECTION rule 2): the far side (top) is compressed and
+  // the near side (bottom) expanded, so the hole reads as receding up the frame
+  // the way the reference looks down the line of play. s2w maps a screen
+  // fraction to a world fraction (concave), w2s is its exact inverse; ground
+  // (wy) and sprites/trees (py) therefore stay registered. k=0 is the old flat
+  // top-down (CCGOLF_VIEW=flat). px/rx are untouched: only the vertical rakes.
+  const s2w = sf => k ? 1 - Math.pow(1 - sf, p) : sf;
+  const w2s = wf => k ? 1 - Math.pow(1 - wf, 1 / p) : wf;
   return {
-    u, kx, ky, minX, minY,
+    u, kx, ky, minX, minY, rake: k,
     px: x => gx + (x - minX) / u * kx,
-    py: y => (y - minY) / u * ky,
+    py: y => w2s((y - minY) / viewH) * Hh,
     rx: v => v / u * kx,
     ry: v => v / u * ky,
     wx: X => (X - gx) / kx * u + minX,
-    wy: Y => Y / ky * u + minY,
+    wy: Y => minY + s2w(Y / Hh) * viewH,
+    // Vertical depth factor at world y: >1 near (bottom), <1 far (top). Used to
+    // make near trees taller (ART-DIRECTION rule 2, depth cue). 1 when flat.
+    depth: y => k ? 0.72 + 0.56 * clamp((y - minY) / viewH, 0, 1) : 1,
   };
 }
 
@@ -202,14 +217,20 @@ function drawGround(c, hole, m, R, seedInt) {
   const isTree = v => v === R.treeDark || v === R.tree || v === R.treeLight;
   const isTurf = v => v === R.rough || v === R.roughDark || v === R.roughLight || v === R.fairway || v === R.fairwayDark || v === R.fairwayLight || v === R.fringe;
   for (const t of hole.trees) {
-    const cx = m.px(t.x), cy = m.py(t.y);
-    const rx = Math.max(0.7, m.rx(t.r)), ry = Math.max(0.7, m.ry(t.r));
+    const cx = m.px(t.x);
+    // Depth cue (rule 2): near trees (bottom of frame) stand taller. ry scales
+    // with depth and the canopy grows upward from a fixed ground contact so the
+    // trunk never floats; rx barely changes so near trees read fuller, not thin.
+    const d = m.depth(t.y);
+    const ryBase = Math.max(0.7, m.ry(t.r));
+    const rx = Math.max(0.7, m.rx(t.r)) * (0.9 + 0.1 * d), ry = ryBase * d;
+    const ground = m.py(t.y) + ryBase, cy = ground - ry;
     if (cx + rx < -1 || cx - rx > W || cy + ry < -1 || cy - ry > H) continue;
     fillEllipse(c, cx, cy, rx, ry, R.tree);
     fillEllipse(c, cx + rx * 0.35, cy + ry * 0.35, rx * 0.6, ry * 0.6, R.treeDark);
     if (rx >= 1.2) fillEllipse(c, cx - rx * 0.3, cy - ry * 0.4, rx * 0.5, ry * 0.5, R.treeLight);
     else set(c, Math.round(cx - 0.4), Math.round(cy - 0.4), R.treeLight);
-    if (t.r >= 5) { const tx = Math.round(cx), ty = Math.round(cy + ry); set(c, tx, ty, R.trunk); if (m.ky >= 1.3) set(c, tx, ty + 1, R.trunk); }
+    if (t.r >= 5) { const tx = Math.round(cx), ty = Math.round(ground); set(c, tx, ty, R.trunk); if (m.ky >= 1.3) set(c, tx, ty + 1, R.trunk); }
   }
   // Boundary pass: a tree cell whose right/down neighbour is turf gets a dark
   // edge there (outline + shadow in one, consistent down-right).
@@ -491,7 +512,7 @@ function projectS(hole, P) {
 }
 
 // Camera for the hole view and the green view. Returns {m, win, info}.
-function camera(view, h, hole, cols, picRows, gutter, tier) {
+function camera(view, h, hole, cols, picRows, gutter, tier, rake) {
   const unitsW = Math.max(8, cols - 2 * gutter), unitsH = picRows * 2;
   const focus = ballDisplay(h);
   const box = bounds(hole);
@@ -523,10 +544,11 @@ function camera(view, h, hole, cols, picRows, gutter, tier) {
     const slackTop = (focus.y - head * u) - (camY - viewH / 2); // yards of room above the sprite
     if (slackTop > 0 && hole.pin.y < camY - viewH / 2 + GREEN_MARGIN) camY = Math.max(camY - slackTop, hole.pin.y - GREEN_MARGIN + viewH / 2);
   } else if (box.maxY - box.minY > viewH) camY = clamp(camY, box.minY + viewH / 2, box.maxY - viewH / 2);
-  const m = windowMap(tier, camX - viewW / 2, camY - viewH / 2, u, gutter);
+  const H = picRows * tier.sy;
+  const m = windowMap(tier, camX - viewW / 2, camY - viewH / 2, u, gutter, rake, H);
   const win = { minX: camX - viewW / 2, maxX: camX + viewW / 2, minY: camY - viewH / 2, maxY: camY + viewH / 2 };
   const greenUnits = (2 * hole.green.ry) / u;
-  const info = `u=${u.toFixed(2)}y/col view=${view} golfer=${SPRITE_UNITS}u/${(SPRITE_UNITS * u).toFixed(0)}y green=${greenUnits.toFixed(1)}u/${(2 * hole.green.ry).toFixed(0)}y cam=(${camX.toFixed(0)},${camY.toFixed(0)}) target=(${target.x.toFixed(0)},${target.y.toFixed(0)}) win=${viewW.toFixed(0)}x${viewH.toFixed(0)}y`;
+  const info = `u=${u.toFixed(2)}y/col view=${view} rake=${(rake || 0).toFixed(2)} golfer=${SPRITE_UNITS}u/${(SPRITE_UNITS * u).toFixed(0)}y green=${greenUnits.toFixed(1)}u/${(2 * hole.green.ry).toFixed(0)}y cam=(${camX.toFixed(0)},${camY.toFixed(0)}) target=(${target.x.toFixed(0)},${target.y.toFixed(0)}) win=${viewW.toFixed(0)}x${viewH.toFixed(0)}y`;
   return { m, win, info, u, greenUnits };
 }
 
@@ -548,7 +570,12 @@ function renderWorking(ctx) {
   const W = cols * tier.sx, H = picRows * tier.sy;
   const c = makeCanvas(W, H, R.rough);
   const view = chooseView(h, hole);
-  const cam = camera(view, h, hole, cols, picRows, gutter, tier);
+  // Raked top-down by default (ART-DIRECTION rule 2); CCGOLF_VIEW=flat forces
+  // the pure side-on top-down, CCGOLF_RAKE tunes the strength (0..0.9).
+  const flat = /^(flat|top|off)$/i.test(process.env.CCGOLF_VIEW || process.env.GOLF_VIEW || '');
+  const rakeEnv = parseFloat(process.env.CCGOLF_RAKE);
+  const rake = flat ? 0 : (Number.isFinite(rakeEnv) ? clamp(rakeEnv, 0, 0.9) : 0.3);
+  const cam = camera(view, h, hole, cols, picRows, gutter, tier, rake);
   const dbg = {};
   // Responsive drop ladder (widest to narrowest): the hole view always draws;
   // then, as width shrinks, elements drop in reverse priority order —
