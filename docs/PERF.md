@@ -27,12 +27,18 @@ cancellation, times 4-8 sessions each spawning 1-3x/sec, accumulates into a
 sudden hard lockup — which matches the reported symptom far better than a
 gradual CPU creep.
 
-Fix (committed): stdin is now read asynchronously with a short deadline (render
-from persisted state if the JSON never arrives), the process always calls
-`process.exit(0)` when done, and an unref'd hard watchdog force-exits after
-`CCGOLF_TIMEOUT_MS` (default 4 s) no matter what. Verified: a renderer with
-stdin left open now self-exits in ~0.6 s, code 0, instead of hanging. Any error
-prints a blank line and exits 0 — never a stack trace (the "never fail" rule).
+Fix (committed): stdin is read asynchronously with a short deadline
+(`CCGOLF_STDIN_MS`, default 400 ms) — if the JSON never arrives the frame
+renders from persisted state. When done the process destroys stdin and exits
+**naturally** so buffered stdout flushes (calling `process.exit()` mid-write
+truncates piped output — that regression was caught by the width gate and
+fixed). A ref'd deadline guarantees a render even if stdin yields nothing, and
+an unref'd hard watchdog (`CCGOLF_TIMEOUT_MS`, default 4 s) force-exits if
+anything pathological hangs. Normal frames still finish on stdin `end` with no
+added latency (measured: identical wall at a 400 ms vs 5000 ms deadline).
+Verified: a renderer with stdin left open now self-exits in ~0.6–1 s, code 0,
+instead of hanging. Any error prints a blank line and exits 0 — never a stack
+trace (the "never fail" rule).
 
 ## Process census (single-session, healthy state only)
 

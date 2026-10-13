@@ -131,33 +131,43 @@ function main(raw) {
 // read ASYNC with a short deadline (render from state if it never arrives), and
 // a hard unref'd watchdog guarantees the process exits even if anything hangs.
 let ran = false;
+let timers = [];
 function finish(raw) {
   if (ran) return;
   ran = true;
+  for (const t of timers) { try { clearTimeout(t); } catch {} }
   try { main(raw); }
   catch (e) {
-    // Never-fail: print nothing (a blank status line) and exit 0, never a trace.
+    // Never-fail: print nothing (a blank status line), never a trace.
     try { process.stdout.write('\n'); } catch {}
     if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) { try { process.stderr.write(String((e && e.stack) || e) + '\n'); } catch {} }
   }
-  try { process.exit(0); } catch {}
+  // Let the process exit naturally so buffered stdout flushes; removing the
+  // stdin listener drops the only thing keeping the event loop alive. Calling
+  // process.exit() here would truncate piped output.
+  try { process.stdin.destroy(); } catch {}
 }
 
 if (!off(process.env.CCGOLF_DISABLE)) {
-  // Kill switch: empty status line, immediate exit, before any work or stdin.
+  // Kill switch: empty status line, no work, no stdin wait. Natural exit flushes.
   try { process.stdout.write('\n'); } catch {}
-  process.exit(0);
 } else {
   const hardMs = clamp(parseInt(process.env.CCGOLF_TIMEOUT_MS, 10) || 4000, 500, 30000);
   const stdinMs = clamp(parseInt(process.env.CCGOLF_STDIN_MS, 10) || 400, 50, 5000);
   let rawIn = '';
-  const hard = setTimeout(() => finish(rawIn), hardMs); hard.unref && hard.unref();
-  const soon = setTimeout(() => finish(rawIn), stdinMs); soon.unref && soon.unref();
+  // Hard backstop only: if everything hangs, force-exit (output already attempted).
+  const hard = setTimeout(() => { try { process.stdout.write('\n'); } catch {} process.exit(0); }, hardMs);
+  if (hard.unref) hard.unref();
+  // Ref'd: guarantees we render within stdinMs even if stdin yields nothing and
+  // does not itself keep the loop alive. Normal frames clear it on stdin 'end'
+  // within ~1ms, so there is no added latency except on a stalled/cancelled frame.
+  const soon = setTimeout(() => finish(rawIn), stdinMs);
+  timers = [hard, soon];
   try {
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', d => { rawIn += d; });
     process.stdin.on('end', () => finish(rawIn));
     process.stdin.on('error', () => finish(rawIn));
-    // If stdin is already closed/TTY, 'end' may not fire; the soon-timer covers it.
+    // If stdin never ends (cancelled frame), the soon-timer renders from state.
   } catch { finish(rawIn); }
 }
