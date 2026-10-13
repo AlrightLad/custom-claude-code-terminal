@@ -48,6 +48,9 @@ function main(raw) {
   const timeScale = clamp(Number(envVar('TIME_SCALE')) || 1, 0.1, 50);
   const tier = selectTier(process.env);
   const theme = envVar('THEME') || 'augusta';
+  // Segment mode: emit only the one-line golfer status row, for embedding in
+  // another status line (CCGOLF_SEGMENT=1 or a --segment argument).
+  const segment = /^(1|true|yes|on)$/i.test(envVar('SEGMENT') || '') || process.argv.includes('--segment');
 
   const home = golfHome();
   ensureDirs(home);
@@ -97,7 +100,7 @@ function main(raw) {
   darkenForWeather(pal, weather); // overcast/rain mood, before the quantizer tables build
   const ctx = { st, hole: curHole, cad, cols: usable, rows: rowsWorking, mode: st.mode, now, sid, tier,
     pal, R: pal.roles, seedInt: hash32(sid + ':' + curHole.no), toPar: t.toPar, thru: t.thru, strokesTotal: t.strokes,
-    season, weather, agents: activeAgentCount(st), debug: !!envVar('DEBUG') };
+    season, weather, agents: activeAgentCount(st), debug: !!envVar('DEBUG'), segment };
   const frame = renderScene(ctx);
   mark('scene');
   if (ctx.violation) {

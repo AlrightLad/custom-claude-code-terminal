@@ -658,6 +658,30 @@ function renderWorking(ctx) {
 }
 
 export function renderScene(ctx) {
+  // Segment mode: one clean line for embedding inside another status line
+  // (CCGOLF_SEGMENT / --segment). Plain text, no chip backgrounds to clash with
+  // the host; the hole and the score are kept at every width, the rest drops
+  // as it narrows. The score is coloured by over/under par.
+  if (ctx.segment) {
+    const h = ctx.st.hole, hole = ctx.hole, R = ctx.R;
+    const cur = h.shots[h.shots.length - 1];
+    const dPin = Math.round(dist(h.ball, hole.pin));
+    let state;
+    if (h.phase === 'tee') state = 'tee';
+    else if (h.phase === 'holed') state = 'holed';
+    else if ((h.phase === 'flight' || h.phase === 'result') && cur) state = `${(cur.club || '').trim()} away`;
+    else state = `${dPin}y`;
+    const score = ctx.toPar === 0 ? 'E' : ctx.toPar > 0 ? `+${ctx.toPar}` : `${ctx.toPar}`;
+    const scoreFg = ctx.toPar < 0 ? R.bad : ctx.toPar > 0 ? R.info : R.text;
+    const tail = `${score} thru ${ctx.thru}`;
+    const heads = [
+      `H${hole.no} par${hole.par} ${hole.length}y · ${state} · `,
+      `H${hole.no} · ${state} · `,
+      `H${hole.no} `,
+    ];
+    const head = heads.find(hd => hd.length + tail.length <= ctx.cols) ?? heads[heads.length - 1];
+    return { cols: ctx.cols, pre: [], canvas: null, textRows: [[{ t: head, fg: R.textDim }, { t: tail, fg: scoreFg }]] };
+  }
   if (ctx.cols < 40) {
     const h = ctx.st.hole;
     return { cols: ctx.cols, pre: [], canvas: null, textRows: [[{ t: `golf H${h.no} par ${h.par} ${ctx.toPar === 0 ? 'E' : ctx.toPar > 0 ? '+' + ctx.toPar : ctx.toPar} thru ${ctx.thru}`, fg: ctx.R.text }]] };
