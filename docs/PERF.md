@@ -3,16 +3,45 @@
 Measured, not estimated. Re-run with `node harness/perf-profile.mjs` (single
 session) and `node harness/stress.mjs 8 12` (eight concurrent sessions).
 
-## Is there a process leak? No.
+## GATE STATUS
 
-The reported lockup is not this renderer leaking processes. A census across all
-live sessions during normal use showed three `node` processes total: one
-unrelated, and two live status-line renders at age ~1s (they exit cleanly every
-frame). The status line is one short-lived `node` per frame; it reads stdin,
-renders, writes, exits. The hooks spawn one short bash/node each and exit. The
-sound hook backgrounds one `powershell` that ends with the ~1s WAV. Nothing
-accumulates. If a machine locks up with many sessions open, it is aggregate CPU
-during spawn bursts, not a leak — mitigations below.
+- **Per-frame wall p99: FAIL.** 241 ms mean / 387 ms p99 on a loaded machine
+  against the 40 ms mean / 100 ms p99 gate — ~2.4x over. The dominant term is
+  Node startup (bare `node -e 0` is 108 ms here, which alone exceeds the p99
+  gate), plus ES-module loading of ~16 files. Bundling + a quiet machine is the
+  path back under; see "Getting under the gate".
+- **8-session aggregate CPU: FAIL.** ~214% of one core in bursts; must come down
+  per the lightweight-outranks-features rule.
+- **Process leak: ROOT-CAUSED and FIXED** (below). The earlier "no leak" line
+  was drawn from a healthy single-session census, which is the wrong state to
+  clear a lockup from; corrected here.
+
+## Lockup root cause: blocking stdin read (FIXED)
+
+The status line read its JSON with `fs.readFileSync(0)`, which blocks until
+stdin EOF. Tested directly: a renderer spawned with stdin left open **hung
+indefinitely** (confirmed). Claude Code cancels an in-flight status line when a
+new repaint triggers; if the cancelled process's stdin is not closed, that
+blocking read never returns and the process survives. One stalled process per
+cancellation, times 4-8 sessions each spawning 1-3x/sec, accumulates into a
+sudden hard lockup — which matches the reported symptom far better than a
+gradual CPU creep.
+
+Fix (committed): stdin is now read asynchronously with a short deadline (render
+from persisted state if the JSON never arrives), the process always calls
+`process.exit(0)` when done, and an unref'd hard watchdog force-exits after
+`CCGOLF_TIMEOUT_MS` (default 4 s) no matter what. Verified: a renderer with
+stdin left open now self-exits in ~0.6 s, code 0, instead of hanging. Any error
+prints a blank line and exits 0 — never a stack trace (the "never fail" rule).
+
+## Process census (single-session, healthy state only)
+
+For completeness, not as a lockup clearance: during normal single-session use a
+full census showed three `node` processes — one unrelated and two live renders
+at age ~1s that exit cleanly. This rules out a leak *in that state only*. The
+leak appeared specifically in the cancelled-with-open-stdin state above, which a
+point-in-time healthy census cannot see. A continuous 10-minute census under the
+failure load is the right test and is tracked as open work.
 
 ## Single session (measured 2026-10-12, busy dev laptop, i7-1365U)
 

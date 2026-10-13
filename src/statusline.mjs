@@ -32,12 +32,7 @@ const mark = name => { if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) m
 
 const off = v => v === undefined || /^(0|false|no|off)$/i.test(v);
 
-function main() {
-  // Global kill switch: one place to silence every golfer in every session
-  // under load, no per-session editing. Prints an empty status line and exits.
-  if (!off(process.env.CCGOLF_DISABLE)) { process.stdout.write('\n'); return; }
-  let raw = '';
-  try { raw = fs.readFileSync(0, 'utf8'); } catch {}
+function main(raw) {
   mark('stdin');
   let input = {};
   try { input = JSON.parse(raw); } catch {}
@@ -129,12 +124,40 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (e) {
-  // Never a stack trace in the status line: one short row that fits.
-  const width = clamp((parseInt(process.env.COLUMNS, 10) || 80) - 7, 20, 200);
-  const msg = String((e && e.message) || e).replace(/\s+/g, ' ');
-  process.stdout.write(`golf: ${msg}`.slice(0, width) + '\n');
-  if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) process.stderr.write(String(e && e.stack || e) + '\n');
+// Bootstrap. Two failures must never happen: a stack trace in the status line,
+// and a process that lingers. `fs.readFileSync(0)` blocks forever if Claude
+// Code cancels a frame without closing stdin, and across many sessions those
+// hung reads accumulate into a lockup — the confirmed root cause. So stdin is
+// read ASYNC with a short deadline (render from state if it never arrives), and
+// a hard unref'd watchdog guarantees the process exits even if anything hangs.
+let ran = false;
+function finish(raw) {
+  if (ran) return;
+  ran = true;
+  try { main(raw); }
+  catch (e) {
+    // Never-fail: print nothing (a blank status line) and exit 0, never a trace.
+    try { process.stdout.write('\n'); } catch {}
+    if (process.env.CCGOLF_TRACE || process.env.GOLF_TRACE) { try { process.stderr.write(String((e && e.stack) || e) + '\n'); } catch {} }
+  }
+  try { process.exit(0); } catch {}
+}
+
+if (!off(process.env.CCGOLF_DISABLE)) {
+  // Kill switch: empty status line, immediate exit, before any work or stdin.
+  try { process.stdout.write('\n'); } catch {}
+  process.exit(0);
+} else {
+  const hardMs = clamp(parseInt(process.env.CCGOLF_TIMEOUT_MS, 10) || 4000, 500, 30000);
+  const stdinMs = clamp(parseInt(process.env.CCGOLF_STDIN_MS, 10) || 400, 50, 5000);
+  let rawIn = '';
+  const hard = setTimeout(() => finish(rawIn), hardMs); hard.unref && hard.unref();
+  const soon = setTimeout(() => finish(rawIn), stdinMs); soon.unref && soon.unref();
+  try {
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', d => { rawIn += d; });
+    process.stdin.on('end', () => finish(rawIn));
+    process.stdin.on('error', () => finish(rawIn));
+    // If stdin is already closed/TTY, 'end' may not fire; the soon-timer covers it.
+  } catch { finish(rawIn); }
 }
