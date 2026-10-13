@@ -88,6 +88,23 @@ Design consequence: backend B (`src/out/sixel.mjs`) is an interface stub for
 a future sidecar process that owns a real TTY. The art direction stays with
 half-block cells.
 
+### Kitty graphics / animation path (POSIX enhancement, not implemented)
+
+The Kitty graphics protocol uses APC escapes (`ESC _ G ... ESC \`), and APC is
+in the same strip set as DCS (`wZ.APC = 95` in the tokenizer below), so a Kitty
+image emitted through the status line meets the same fate as Sixel: removed
+before the terminal sees it. It cannot work through Claude Code's capture.
+
+What makes Kitty interesting is that, unlike Sixel, it can *animate a placed
+image on its own* — frames are uploaded once and the terminal loops them
+without the program re-emitting anything. So the same sidecar process that the
+Sixel stub anticipates (one that owns a real TTY, on Kitty or a Kitty-protocol
+terminal such as Ghostty or WezTerm) could upload a short swing/putt loop once
+and let the terminal run it, instead of the ~1 fps per-invocation repaint the
+status line is limited to. This is a POSIX-only enhancement idea (Kitty is not
+on Windows); it is recorded here, not built. The default renderer stays
+half-block cells so it works everywhere.
+
 ## P0.5 — row ceiling
 
 Rows were emitted as full-width numbered rulers, so wrapping, truncation and

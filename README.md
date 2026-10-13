@@ -91,6 +91,33 @@ Golden-hour hours shift the palette warm. Override with
 `CCGOLF_SEASON=winter|spring|summer|fall|auto` (default `auto`, `none` to turn
 it off) and `CCGOLF_HEMISPHERE=north|south`.
 
+Weather is rolled per hole from the season's probabilities. Rain reads as a
+wet, overcast mood with a few faint streaks; snow is prominent; flowers are a
+dense warm speckle confined to the rough; a caddie on foot raises an umbrella
+in the rain. Force it for a screenshot with
+`CCGOLF_WEATHER=rain,overcast` (comma-list, or `clear`).
+
+### Holidays
+
+Near a holiday, the course dresses up: a data file in `assets/holidays/`
+layers festive colours, weather and wardrobe on top of the current season for
+a short date window. Built in: christmas, halloween, valentines, stpatricks
+and independence. The active one is whichever window you are inside with the
+nearest start; force or silence it with `CCGOLF_HOLIDAY=<name>` or
+`CCGOLF_HOLIDAY=none`. Copy a file and give it a `window` of `"MM-DD".."MM-DD"`
+to add your own.
+
+### Camera and segment mode
+
+The hole is drawn in a *raked top-down*: the far side compresses and near
+trees stand taller, so it reads like you are looking down the line of play.
+`CCGOLF_VIEW=flat` gives the pure top-down, `CCGOLF_RAKE=0..0.9` tunes it.
+
+`CCGOLF_SEGMENT=1` (or passing `--segment`) prints a single clean line —
+`H1 par4 356y · tee · E thru 0` — instead of the full picture, so the golf
+status can be embedded inside another status line. The hole and the score stay
+at every width.
+
 ## Glyph tiers
 
 Each terminal cell can carry more than one pixel depending on the font:
@@ -130,6 +157,11 @@ Everything below is a data file you can edit without touching source.
 | `CCGOLF_THEME` | course palette: `augusta`, `links`, `desert` | `augusta` |
 | `CCGOLF_SEASON` | `auto`, `spring`, `summer`, `fall`, `winter`, `none` | `auto` |
 | `CCGOLF_HEMISPHERE` | `north` or `south` (for `auto` season) | `north` |
+| `CCGOLF_WEATHER` | force weather: `rain`, `overcast`, `snow`, `leaves`, `blossom`, `flowers` (comma-list), or `clear` | rolled per hole |
+| `CCGOLF_HOLIDAY` | force a holiday by name, or `none`; see below | `auto` (by date) |
+| `CCGOLF_VIEW` | `flat` for pure top-down instead of the raked camera | raked |
+| `CCGOLF_RAKE` | camera rake strength, `0`–`0.9` | `0.3` |
+| `CCGOLF_SEGMENT` | `1` to emit one embeddable status line (also `--segment`) | off |
 | `CCGOLF_GLYPHS` | `halfblock`, `quadrant`, `sextant`, `auto` | `auto` |
 | `CCGOLF_ROWS` | working-mode height, 3–20 | from `LINES` |
 | `CCGOLF_COLOR` | `256` to force 256-colour SGR | truecolor |
