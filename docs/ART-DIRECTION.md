@@ -58,3 +58,16 @@ State which rule number it satisfies and attach a before/after via
 `node harness/visual-diff.mjs --png` (the per-cell change % must be non-trivial
 for a change that claims a surface). Run `greyscale.mjs` and `sprites.mjs`
 (silhouette) FIRST after the change, not at the end of a batch.
+
+## What the frames prove (and don't)
+
+Every image under `docs/frames/` — the baselines, the review montage, every
+`sextant` frame — is produced by this project's own rasterizer
+(`harness/raster-frame.mjs` maps each glyph to its subpixel mask and paints the
+pixels). **No terminal is involved.** So these images prove what the renderer
+*intends*, not what any given terminal will *display*: a `sextant` frame looks
+perfect here even though, on a terminal/font without Unicode Legacy Computing
+coverage, the same scene renders as a wall of tofu boxes. Treat the montage as
+the art spec and `node src/statusline.mjs --doctor` as the check of what a real
+terminal shows. This is also why the shipped default tier is `halfblock` (see
+the README "Glyph tiers and fonts" section).

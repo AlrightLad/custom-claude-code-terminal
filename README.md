@@ -118,21 +118,48 @@ trees stand taller, so it reads like you are looking down the line of play.
 status can be embedded inside another status line. The hole and the score stay
 at every width.
 
-## Glyph tiers
+## Glyph tiers and fonts
 
-Each terminal cell can carry more than one pixel depending on the font:
+Each terminal cell can carry more than one "pixel", depending on the Unicode
+block your font (or terminal) can draw:
 
-| Tier | Pixels per cell | Where |
-|---|---|---|
-| `halfblock` | 1x2 | every terminal (the guaranteed fallback) |
-| `quadrant` | 2x2 | almost every font |
-| `sextant` | 2x3 | Windows Terminal, and fonts with the legacy-computing block |
+| Tier | Pixels per cell | Glyphs | Support |
+|---|---|---|---|
+| `halfblock` | 1x2 | U+2580 U+2584 U+2588 | **universal** — every terminal font |
+| `quadrant` | 2x2 | U+2596–U+259F | common, but not universal (Consolas lacks it) |
+| `sextant` | 2x3 | U+1FB00–U+1FB3B | Unicode 13 "Symbols for Legacy Computing" — recent fonts, or terminals that draw it themselves |
 
-The renderer auto-selects sextant under Windows Terminal and half-block
-elsewhere. Run `bash harness/glyphs.sh` to see what your font has, or
-`bash harness/termprobe.sh` for a full capability report, then set
-`CCGOLF_GLYPHS=halfblock|quadrant|sextant`. If you see hollow boxes, drop a
-tier.
+**The default is `halfblock`, and it is the only tier chosen automatically.** A
+status line is a one-shot process whose output Claude Code recaptures, so it has
+no TTY round-trip to probe your font from the inside — and a safe default beats a
+pretty one. `quadrant` and `sextant` are **opt-in**: set `CCGOLF_GLYPHS=sextant`
+(or `=quadrant`) once you have confirmed your terminal renders them.
+
+### Check your terminal
+
+    node src/statusline.mjs --doctor
+
+Run it in the terminal where the status line appears. It prints one row per tier
+and tells you which render, which terminal and font you are on, and exactly what
+to set. **Use the highest tier whose row shows solid two-colour blocks.** If a
+row is hollow boxes — `▯ □ ?`, "tofu" — those glyphs are missing and you must
+stay lower. (`bash harness/glyphs.sh` is the older dev-only probe.)
+
+### Where sextant works
+
+`halfblock` needs no setup and works everywhere. `sextant` needs **either**:
+
+- **A terminal that draws the glyphs itself**, regardless of font — Windows
+  Terminal (`builtinGlyphs`, on by default), kitty, or Ghostty.
+- **A font with the Legacy Computing block** — a recent **Cascadia Code**
+  (2404.23 / Nov 2024 or newer; older copies, including some bundled ones, do
+  not have it) or **GNU Unifont**.
+
+On mintty / Git Bash with the default font, sextant shows tofu — keep
+`halfblock` (it looks great), switch to one of the terminals above, or install a
+capable font. Note the frames in `docs/frames/` are painted by this project's
+own rasterizer, not by a terminal, so they always show sextant no matter what
+your terminal can do; `--doctor` shows your reality.
 
 ## Themes and row budget
 
@@ -162,7 +189,7 @@ Everything below is a data file you can edit without touching source.
 | `CCGOLF_VIEW` | `flat` for pure top-down instead of the raked camera | raked |
 | `CCGOLF_RAKE` | camera rake strength, `0`–`0.9` | `0.3` |
 | `CCGOLF_SEGMENT` | `1` to emit one embeddable status line (also `--segment`) | off |
-| `CCGOLF_GLYPHS` | `halfblock`, `quadrant`, `sextant`, `auto` | `auto` |
+| `CCGOLF_GLYPHS` | `halfblock`, `quadrant`, `sextant` (opt-in); `auto` = `halfblock` | `halfblock` |
 | `CCGOLF_ROWS` | working-mode height, 3–20 | from `LINES` |
 | `CCGOLF_COLOR` | `256` to force 256-colour SGR | truecolor |
 | `CCGOLF_SOUND` | `off` to silence all cues | on |
