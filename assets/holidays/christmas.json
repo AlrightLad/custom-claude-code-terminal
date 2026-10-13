@@ -1,0 +1,14 @@
+{
+  "name": "christmas",
+  "notes": "Festive winter course: deep snow, red flag and ribbon, a knit (santa) cap and visible breath. 'window' is MM-DD..MM-DD (inclusive, may wrap the year end); the active holiday is the one whose window contains today with the nearest start. Overrides merge on top of the current season.",
+  "window": { "from": "12-18", "to": "12-31" },
+  "palette": {
+    "frame": "#c0392b",
+    "sky": "#0a1424",
+    "treeLight": "#e8f0f4",
+    "fairwayLight": "#d8e4e0"
+  },
+  "weather": { "snow": 0.9, "overcast": 0.3 },
+  "wardrobe": { "hat": "knit", "breath": true },
+  "props": { "birds": 0.2 }
+}

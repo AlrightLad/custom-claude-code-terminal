@@ -1,0 +1,16 @@
+{
+  "name": "halloween",
+  "notes": "Spooky autumn: purple-black sky, orange treeline, falling leaves. Overrides merge on top of the current season.",
+  "window": { "from": "10-24", "to": "10-31" },
+  "palette": {
+    "frame": "#d35400",
+    "sky": "#140a1e",
+    "treeLight": "#e07b1a",
+    "tree": "#5a3a12",
+    "flowerA": "#e07b1a",
+    "flowerB": "#7a3aa0"
+  },
+  "weather": { "leaves": 0.8, "overcast": 0.4, "flowers": 0.5 },
+  "wardrobe": { "hat": "cap" },
+  "props": { "birds": 0.5 }
+}

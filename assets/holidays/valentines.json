@@ -1,0 +1,14 @@
+{
+  "name": "valentines",
+  "notes": "Blossom and pinks over the winter course. Overrides merge on top of the current season.",
+  "window": { "from": "02-10", "to": "02-16" },
+  "palette": {
+    "frame": "#e84a7f",
+    "treeLight": "#f3a7cc",
+    "flowerA": "#f05a8f",
+    "flowerB": "#f3a7cc",
+    "flowerC": "#ffd0e0"
+  },
+  "weather": { "flowers": 0.9, "blossom": 0.6 },
+  "wardrobe": { "hat": "cap" }
+}

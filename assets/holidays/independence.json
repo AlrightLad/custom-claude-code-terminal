@@ -1,0 +1,18 @@
+{
+  "name": "independence",
+  "notes": "Red, white and blue for the Fourth of July over the summer links. Overrides merge on top of the current season.",
+  "window": { "from": "07-01", "to": "07-05" },
+  "palette": {
+    "frame": "#c0392b",
+    "sky": "#0a1430",
+    "water": "#1a3a8a",
+    "waterLight": "#4a7ad8",
+    "sand": "#f4f4f4",
+    "flowerA": "#d02a2a",
+    "flowerB": "#f4f4f4",
+    "flowerC": "#2a4ad0"
+  },
+  "weather": { "flowers": 0.5 },
+  "wardrobe": { "hat": "visor", "shorts": true },
+  "props": { "birds": 0.6 }
+}

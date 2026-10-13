@@ -1,0 +1,15 @@
+{
+  "name": "stpatricks",
+  "notes": "Everything greener, soft showers. Overrides merge on top of the current season.",
+  "window": { "from": "03-15", "to": "03-18" },
+  "palette": {
+    "frame": "#2e9e4f",
+    "fairway": "#3fae55",
+    "fairwayLight": "#4bbb60",
+    "green": "#6fd27a",
+    "flowerA": "#8fe08a",
+    "flowerB": "#c8f0b0"
+  },
+  "weather": { "rain": 0.3, "overcast": 0.3, "flowers": 0.6 },
+  "wardrobe": { "hat": "cap" }
+}

@@ -37,17 +37,17 @@ export function resolveSeason(env, now) {
   return { name: name || 'none', data: data || { palette: {}, weather: {}, sim: {}, wardrobe: {}, props: {} }, golden, hemisphere };
 }
 
-// Applies the season's palette overrides to a loaded palette in place
-// (hex strings by role name). Returns the palette.
-export function applySeason(pal, season) {
-  const over = { ...(season.data.palette || {}), ...(season.golden ? season.data.golden || {} : {}) };
-  for (const [role, hex] of Object.entries(over)) {
+// Writes hex-by-role-name overrides into a palette's rgb in place.
+function overridePalette(pal, over) {
+  for (const [role, hex] of Object.entries(over || {})) {
     const idx = pal.roles[role];
     if (idx === undefined || Array.isArray(idx) || typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) continue;
     const n = parseInt(hex.slice(1), 16);
     pal.rgb[idx] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  // ansi256 and Lab tables must follow the new colours
+}
+// The ansi256 and Lab tables must follow any rgb change.
+function recomputeAnsi(pal) {
   pal.ansi256 = pal.rgb.map(c => {
     const [r, g, b] = c;
     if (Math.abs(r - g) < 12 && Math.abs(g - b) < 12) { if (r < 8) return 16; if (r > 248) return 231; return 232 + Math.round((r - 8) / 247 * 23); }
@@ -55,7 +55,66 @@ export function applySeason(pal, season) {
     return 16 + 36 * q(r) + 6 * q(g) + q(b);
   });
   pal._D = null; pal._lab = null;
+}
+
+// Applies the season's palette overrides to a loaded palette in place
+// (hex strings by role name). Returns the palette.
+export function applySeason(pal, season) {
+  overridePalette(pal, { ...(season.data.palette || {}), ...(season.golden ? season.data.golden || {} : {}) });
+  recomputeAnsi(pal);
   return pal;
+}
+
+// Holidays: a data file in assets/holidays/ overrides palette roles and merges
+// weather/wardrobe/props on top of the active season for a short date window.
+// CCGOLF_HOLIDAY forces one by name (or none/off disables); otherwise the
+// active holiday is the one whose MM-DD..MM-DD window contains today with the
+// nearest start (nearest-start-wins when windows overlap).
+const DIR_H = new URL('../../assets/holidays/', import.meta.url);
+const CUM = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+const ord = (m, d) => CUM[(m - 1 + 12) % 12] + d;
+function listHolidays() {
+  try { return fs.readdirSync(DIR_H).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5)); } catch { return []; }
+}
+function readHoliday(name) {
+  try { return JSON.parse(fs.readFileSync(new URL(name + '.json', DIR_H), 'utf8')); } catch { return null; }
+}
+// Days since the window's start if today is inside it, else null (handles a
+// window that wraps the year end, e.g. 12-28..01-02).
+function windowSince(now, win) {
+  if (!win || !win.from || !win.to) return null;
+  const dt = new Date(now), t = ord(dt.getMonth() + 1, dt.getDate());
+  const [fm, fd] = String(win.from).split('-').map(Number), [tm, td] = String(win.to).split('-').map(Number);
+  const a = ord(fm, fd), b = ord(tm, td);
+  const inside = a <= b ? (t >= a && t <= b) : (t >= a || t <= b);
+  return inside ? (t - a + 365) % 365 : null;
+}
+export function resolveHoliday(env, now) {
+  const forced = String(env.CCGOLF_HOLIDAY || env.GOLF_HOLIDAY || 'auto').toLowerCase();
+  if (forced === 'none' || forced === 'off') return null;
+  if (forced !== 'auto' && forced !== '') { const d = readHoliday(forced); return d ? { name: forced, data: d } : null; }
+  let best = null, bestSince = Infinity;
+  for (const name of listHolidays()) {
+    const d = readHoliday(name); if (!d) continue;
+    const since = windowSince(now, d.window);
+    if (since !== null && since < bestSince) { best = { name, data: d }; bestSince = since; }
+  }
+  return best;
+}
+// Merges the active holiday onto a palette and the season object in place, so
+// all downstream code (weatherFor, wardrobe, props) reads the merged values.
+export function applyHoliday(pal, season, env, now) {
+  const hol = resolveHoliday(env, now);
+  if (!hol) return season;
+  overridePalette(pal, hol.data.palette); recomputeAnsi(pal);
+  season.data = {
+    ...season.data,
+    weather: { ...(season.data.weather || {}), ...(hol.data.weather || {}) },
+    wardrobe: { ...(season.data.wardrobe || {}), ...(hol.data.wardrobe || {}) },
+    props: { ...(season.data.props || {}), ...(hol.data.props || {}) },
+  };
+  season.holiday = hol.name;
+  return season;
 }
 
 // Weather for a hole: deterministic per (session, hole, day) so it does not
