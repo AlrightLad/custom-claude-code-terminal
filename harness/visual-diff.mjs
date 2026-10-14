@@ -33,7 +33,8 @@ const CANON = [
   { name: 'sextant',  sid: 'canon-B', seq: 'W'.repeat(10),      grab: 10, cols: 160, lines: 40, tier: 'sextant',   agents: 0 },
   { name: 'dogleg',   sid: 'canon-D12', seq: 'W',               grab: 1,  cols: 160, lines: 40, tier: 'halfblock', agents: 0 },
   { name: 'idle-stand', sid: 'canon-A', seq: 'WWWWWWWWI',       grab: 9,  cols: 120, lines: 36, tier: 'halfblock', agents: 0 },
-  { name: 'idle-walk', sid: 'canon-C', seq: 'IIIIIIIIIIIIII',   grab: 14, cols: 120, lines: 10, tier: 'halfblock', agents: 0 },
+  { name: 'idle-tee',  sid: 'canon-C', seq: 'III',               grab: 3,  cols: 120, lines: 24, tier: 'halfblock', agents: 0 },
+  { name: 'idle-walk', sid: 'canon-C', seq: 'W'.repeat(35) + 'I'.repeat(10), grab: 42, cols: 120, lines: 10, tier: 'halfblock', agents: 0 },
   { name: 'leaderboard', sid: 'canon-A', seq: 'W'.repeat(8),    grab: 8,  cols: 150, lines: 44, tier: 'halfblock', agents: 3 },
 ];
 

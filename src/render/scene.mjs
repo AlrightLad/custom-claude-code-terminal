@@ -686,9 +686,12 @@ export function renderScene(ctx) {
     const h = ctx.st.hole;
     return { cols: ctx.cols, pre: [], canvas: null, textRows: [[{ t: `golf H${h.no} par ${h.par} ${ctx.toPar === 0 ? 'E' : ctx.toPar > 0 ? '+' + ctx.toPar : ctx.toPar} thru ${ctx.thru}`, fg: ctx.R.text }]] };
   }
-  // Mid-hole idle (the shot settling, or the golfer standing at the ball)
-  // keeps the full hole view; only between-holes idle collapses to the strip.
+  // On-hole idle keeps the full hole view: the shot settling ('settle'), the
+  // golfer standing at the ball ('stand'), or waiting on the tee before the
+  // first shot ('wait'). A brand-new session starts in 'wait', so it must open
+  // on the tee, not a bare strip. Only the between-holes sequence
+  // (holeout/round/walk) collapses to the compact idle strip.
   const idlePhase = ctx.st.idle ? ctx.st.idle.phase : null;
-  if (ctx.mode === 'WORKING' || idlePhase === 'settle' || idlePhase === 'stand') return renderWorking(ctx);
+  if (ctx.mode === 'WORKING' || idlePhase === 'settle' || idlePhase === 'stand' || idlePhase === 'wait') return renderWorking(ctx);
   return renderIdle(ctx, { gmap: golferMap(ctx.cad, ctx.R), cmap: caddieMap(ctx.cad, ctx.R) });
 }
