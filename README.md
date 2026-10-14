@@ -127,7 +127,7 @@ block your font (or terminal) can draw:
 |---|---|---|---|
 | `halfblock` | 1x2 | U+2580 U+2584 U+2588 | **universal** — every terminal font |
 | `quadrant` | 2x2 | U+2596–U+259F | common, but not universal (Consolas lacks it) |
-| `sextant` | 2x3 | U+1FB00–U+1FB3B | Unicode 13 "Symbols for Legacy Computing" — recent fonts, or terminals that draw it themselves |
+| `sextant` | 2x3 | U+1FB00–U+1FB3B | Unicode 13 "Symbols for Legacy Computing" — renders only if the terminal draws these glyphs or falls back to a font that has them |
 
 **The default is `halfblock`, and it is the only tier chosen automatically.** A
 status line is a one-shot process whose output Claude Code recaptures, so it has
@@ -139,27 +139,34 @@ pretty one. `quadrant` and `sextant` are **opt-in**: set `CCGOLF_GLYPHS=sextant`
 
     node src/statusline.mjs --doctor
 
-Run it in the terminal where the status line appears. It prints one row per tier
-and tells you which render, which terminal and font you are on, and exactly what
-to set. **Use the highest tier whose row shows solid two-colour blocks.** If a
-row is hollow boxes — `▯ □ ?`, "tofu" — those glyphs are missing and you must
-stay lower. (`bash harness/glyphs.sh` is the older dev-only probe.)
+Run it in the terminal where the status line appears. It prints **every glyph the
+renderer can emit** at each tier — pulled from the renderer's own tables, so the
+probe and the game can never disagree — plus which terminal and font you are on
+and exactly what to set. **Use the highest tier whose glyphs are all solid
+two-colour blocks.** If any are hollow boxes — `▯ □ ?`, "tofu" — stay lower.
+(`bash harness/glyphs.sh` is the older dev-only probe.)
 
 ### Where sextant works
 
-`halfblock` needs no setup and works everywhere. `sextant` needs **either**:
+`halfblock` needs no setup and works everywhere. Whether `sextant` renders is a
+property of your **terminal**, not just your font — which is why it is opt-in and
+can only be judged in your own terminal with `--doctor`.
 
-- **A terminal that draws the glyphs itself**, regardless of font — Windows
-  Terminal (`builtinGlyphs`, on by default), kitty, or Ghostty.
-- **A font with the Legacy Computing block** — a recent **Cascadia Code**
-  (2404.23 / Nov 2024 or newer; older copies, including some bundled ones, do
-  not have it) or **GNU Unifont**.
+The glyphs themselves are usually present on the system: on Windows the CJK fonts
+**MingLiU-ExtB** and **Microsoft YaHei** carry the entire U+1FB00–U+1FB3B block,
+as do a recent **Cascadia Code** (2404.23 / Nov 2024+) and **GNU Unifont**. But a
+glyph only appears if the terminal draws it or falls back to a font that has it:
 
-On mintty / Git Bash with the default font, sextant shows tofu — keep
-`halfblock` (it looks great), switch to one of the terminals above, or install a
-capable font. Note the frames in `docs/frames/` are painted by this project's
-own rasterizer, not by a terminal, so they always show sextant no matter what
-your terminal can do; `--doctor` shows your reality.
+- **Terminals that draw these glyphs themselves** show sextant regardless of the
+  primary font — Windows Terminal (`builtinGlyphs`, on by default), kitty, Ghostty.
+- **mintty / Git Bash** renders from the font with limited fallback, so sextant
+  often shows tofu there even though a capable font is installed — because mintty
+  will not reach for it. Keep `halfblock` (it looks great), switch to a terminal
+  above, or set mintty's primary font to one with the block.
+
+Note the frames in `docs/frames/` are painted by this project's own rasterizer,
+not by a terminal, so they always show sextant no matter what your terminal does;
+`--doctor` shows your reality.
 
 ## Themes and row budget
 

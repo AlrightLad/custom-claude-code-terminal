@@ -66,8 +66,10 @@ Every image under `docs/frames/` — the baselines, the review montage, every
 (`harness/raster-frame.mjs` maps each glyph to its subpixel mask and paints the
 pixels). **No terminal is involved.** So these images prove what the renderer
 *intends*, not what any given terminal will *display*: a `sextant` frame looks
-perfect here even though, on a terminal/font without Unicode Legacy Computing
-coverage, the same scene renders as a wall of tofu boxes. Treat the montage as
-the art spec and `node src/statusline.mjs --doctor` as the check of what a real
-terminal shows. This is also why the shipped default tier is `halfblock` (see
-the README "Glyph tiers and fonts" section).
+perfect here even though, on a terminal that cannot draw the Legacy Computing
+glyphs (or will not fall back to a font that has them, as mintty often will not —
+the glyphs commonly exist on the system but go unused), the same scene renders as
+a wall of tofu boxes. Treat the montage as the art spec and
+`node src/statusline.mjs --doctor` as the check of what a real terminal shows.
+This is also why the shipped default tier is `halfblock` (see the README "Glyph
+tiers and fonts" section).
