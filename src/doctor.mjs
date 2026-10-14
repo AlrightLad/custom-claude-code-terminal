@@ -8,11 +8,12 @@
 // the terminal actually draws a sextant by querying the cursor position (CSI 6n).
 //
 // That width measurement matters because the common sextant failure is NOT a
-// missing glyph (tofu). The glyphs usually exist and render solid. They fail
-// because the terminal draws them DOUBLE-WIDTH (e.g. resolved from a CJK fallback
-// font): solid in a probe row, but two cells each, which shreds the scene grid.
-// A probe row alone cannot reveal that — only a width measurement, or your eyes
-// on an actual frame, can. No dependencies, no network.
+// missing glyph (tofu). Often the glyphs render solid yet still fail, because the
+// terminal draws them DOUBLE-WIDTH (two cells each — mintty does this): solid in a
+// probe row, but the scene grid shreds. Whether a terminal can source these glyphs
+// and at what width is not predictable from here (even inspecting the font files is
+// unreliable), so the probe measures width live and defers to your eyes on a frame.
+// No dependencies, no network.
 import { TIERS, selectTier } from './render/tiers.mjs';
 
 const E = '\x1b[';
@@ -160,7 +161,7 @@ export async function runDoctor(env = process.env) {
     q(`  wrong width. Judge from a real frame:  ${WHITE}node src/demo.mjs --glyphs sextant${R}`);
   } else if (w.verdict === 'double') {
     q(`  ${REDW}DOUBLE-WIDTH${R}: measured ${w.sextAdv} cells for ${w.n} sextants vs ${w.asciiAdv} for ${w.n} ASCII.`);
-    q(`  The glyphs exist and render solid, but each takes two cells, so the scene`);
+    q(`  These glyphs render solid here, but each takes two cells, so the scene`);
     q(`  grid breaks. ${BOLD}Sextant cannot work in this terminal.${R} Keep ${WHITE}halfblock${R}, or run`);
     q(`  Git Bash inside ${WHITE}Windows Terminal${R}, which draws these at the correct width.`);
   } else {

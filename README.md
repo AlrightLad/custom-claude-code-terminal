@@ -157,19 +157,23 @@ can only be judged in your own terminal with `--doctor`.
 
 There are two separate ways sextant can fail, and the second is the subtle one:
 
-1. **Missing glyphs (tofu).** Rare on a stock system — on Windows the CJK fonts
-   **MingLiU-ExtB** and **Microsoft YaHei** already carry the whole
-   U+1FB00–U+1FB3B block, as do a recent **Cascadia Code** (2404.23 / Nov 2024+)
-   and **GNU Unifont**.
-2. **Wrong width.** The glyphs resolve and render *solid*, but the terminal draws
-   them **double-width** (two cells each, commonly because they fall back to a CJK
-   font). A single probe row looks perfect, yet the scene grid is shredded. A row
-   of solid blocks is **necessary but not sufficient** — you have to check width.
+1. **Missing glyphs (tofu).** No font your terminal can reach has the block, so
+   every cell is a hollow box. Some fonts do carry it (a recent **Cascadia Code**,
+   **GNU Unifont**), but whether your terminal reaches one is not something this
+   project can predict — don't assume.
+2. **Wrong width.** The glyphs render *solid* but the terminal draws them
+   **double-width** (two cells each). A single probe row looks perfect, yet the
+   scene grid is shredded. A row of solid blocks is **necessary but not
+   sufficient** — you have to check width.
+
+(Font-file inspection is not even reliable here: scanning a stock Windows box
+three different ways disagreed on whether any installed font had the block. The
+only authority is your own terminal — which is why `--doctor` measures it live.)
 
 **`mintty` (the default Git Bash terminal) hits case 2: sextant does not work
-there even though the glyphs are present**, because it renders them double-width.
-`--doctor` measures this directly (it queries the cursor position after printing a
-known run) and will tell you outright. The fix for a higher tier on Windows is to
+there — it renders the glyphs double-width**, which shreds the grid. `--doctor`
+measures this directly (it queries the cursor position after printing a known run)
+and will tell you outright. The fix for a higher tier on Windows is to
 **run Git Bash inside [Windows Terminal](https://aka.ms/terminal)**, which draws
 these glyphs itself at the correct width; kitty and Ghostty do too. Otherwise keep
 `halfblock` — it is the intended target and looks great.

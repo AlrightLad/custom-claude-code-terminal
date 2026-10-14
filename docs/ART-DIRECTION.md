@@ -68,10 +68,11 @@ pixels). **No terminal is involved**, and crucially the rasterizer paints every
 glyph in a fixed-size cell — it cannot model what a real terminal does with glyph
 *width*. So these images prove what the renderer *intends*, not what any given
 terminal will *display*. A `sextant` frame looks perfect here even though, in
-mintty, the same scene is broken: the Legacy Computing glyphs are present and
-render solid, but mintty draws them **double-width** (two cells each, from a CJK
-fallback font), so the grid shreds. Our rasterizer gives every glyph one cell and
-can never show that. Treat the montage as the art spec, and
+mintty, the same scene is broken: the glyphs render solid in isolation yet mintty
+draws them **double-width** (two cells each), so the grid shreds. (How a terminal
+sources and sizes these glyphs cannot be predicted from here — a font-file scan of
+a stock Windows box, run three ways, could not even agree on whether any font had
+the block.) Our rasterizer gives every glyph one cell and can never show that. Treat the montage as the art spec, and
 `node src/statusline.mjs --doctor` (which measures real glyph width via CSI 6n)
 plus an actual terminal frame as the check of what ships. This is why the default
 tier is `halfblock` and the art is tuned there — see the README "Glyph tiers and

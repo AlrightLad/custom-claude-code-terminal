@@ -7,16 +7,13 @@
 //   quadrant   2x2  U+2596..U+259F         Block Elements; common but NOT universal
 //                                          (tested: Consolas has no quadrant pieces)
 //   sextant    2x3  U+1FB00..U+1FB3B       Unicode 13 "Symbols for Legacy Computing".
-//                                          The glyphs often exist on the system (on
-//                                          Windows the CJK fonts MingLiU-ExtB and
-//                                          Microsoft YaHei carry the whole block, as
-//                                          do recent Cascadia Code / GNU Unifont), but
-//                                          they only appear if the terminal renders or
-//                                          falls back to a font that has them — mintty
-//                                          often will not, showing hollow "tofu" boxes.
-//                                          That cannot be probed from a status line, so
-//                                          sextant is opt-in only — see selectTier
-//                                          below and `--doctor`.
+//                                          Whether a terminal can draw these, and at
+//                                          what cell width, cannot be probed from a
+//                                          status line and is not even reliable to tell
+//                                          from the installed font files: mintty draws
+//                                          them DOUBLE-WIDTH (two cells), shredding the
+//                                          grid, while others show tofu. Opt-in only;
+//                                          `--doctor` measures it live. See selectTier.
 //
 // Bit order in a pattern mask: subpixel (x, y) is bit (y * sx + x), so the
 // top-left is bit 0 and bits increase left-to-right then top-to-bottom. That
@@ -67,11 +64,12 @@ export const TIER_ORDER = ['halfblock', 'quadrant', 'sextant'];
 // Why there is no auto-upgrade: a status line is a one-shot process whose stdout
 // Claude Code recaptures and re-renders through Ink, so there is no TTY round
 // trip and glyph support genuinely cannot be probed from in here (docs/PROBE.md).
-// Whether sextant (U+1FB00..U+1FB3B, Unicode 13) renders is a property of the
-// terminal, not just the font: the glyphs may exist in an installed font yet
-// still show as hollow "tofu" boxes if the terminal will not fall back to that
-// font (mintty often will not). A safe default beats a pretty one, so we never
-// auto-select a tier whose support we cannot verify.
+// Whether sextant (U+1FB00..U+1FB3B, Unicode 13) renders at all, and at the right
+// cell width, is a property of the terminal and the system font fallback that
+// cannot be probed from here — and is not reliably predictable even from the
+// installed font files. mintty, for one, draws these double-width, which breaks
+// the grid. A safe default beats a pretty one, so we never auto-select a tier
+// whose support we cannot verify.
 // sextant/quadrant are opt-in: the user runs `node src/statusline.mjs --doctor`
 // in their own terminal, sees which tiers actually render, and sets
 // CCGOLF_GLYPHS accordingly. (Windows Terminal, kitty and Ghostty draw these
