@@ -127,7 +127,7 @@ block your font (or terminal) can draw:
 |---|---|---|---|
 | `halfblock` | 1x2 | U+2580 U+2584 U+2588 | **universal** — every terminal font |
 | `quadrant` | 2x2 | U+2596–U+259F | common, but not universal (Consolas lacks it) |
-| `sextant` | 2x3 | U+1FB00–U+1FB3B | Unicode 13 "Symbols for Legacy Computing" — renders only if the terminal draws these glyphs or falls back to a font that has them |
+| `sextant` | 2x3 | U+1FB00–U+1FB3B | Unicode 13 "Symbols for Legacy Computing" — needs a terminal that draws these at single cell width (not mintty; see below) |
 
 **The default is `halfblock`, and it is the only tier chosen automatically.** A
 status line is a one-shot process whose output Claude Code recaptures, so it has
@@ -141,10 +141,12 @@ pretty one. `quadrant` and `sextant` are **opt-in**: set `CCGOLF_GLYPHS=sextant`
 
 Run it in the terminal where the status line appears. It prints **every glyph the
 renderer can emit** at each tier — pulled from the renderer's own tables, so the
-probe and the game can never disagree — plus which terminal and font you are on
-and exactly what to set. **Use the highest tier whose glyphs are all solid
-two-colour blocks.** If any are hollow boxes — `▯ □ ?`, "tofu" — stay lower.
-(`bash harness/glyphs.sh` is the older dev-only probe.)
+probe and the game can never disagree — then **measures how wide the terminal
+actually draws a sextant** (by querying the cursor position, which it can do
+because it owns the TTY and the status line does not). For `sextant` you need
+both: every glyph solid *and* the width check passing. Solid-but-double-width is
+the mintty failure, and the probe calls it out explicitly. (`bash
+harness/glyphs.sh` is the older dev-only probe.)
 
 ### Where sextant works
 
@@ -152,21 +154,29 @@ two-colour blocks.** If any are hollow boxes — `▯ □ ?`, "tofu" — stay lo
 property of your **terminal**, not just your font — which is why it is opt-in and
 can only be judged in your own terminal with `--doctor`.
 
-The glyphs themselves are usually present on the system: on Windows the CJK fonts
-**MingLiU-ExtB** and **Microsoft YaHei** carry the entire U+1FB00–U+1FB3B block,
-as do a recent **Cascadia Code** (2404.23 / Nov 2024+) and **GNU Unifont**. But a
-glyph only appears if the terminal draws it or falls back to a font that has it:
+There are two separate ways sextant can fail, and the second is the subtle one:
 
-- **Terminals that draw these glyphs themselves** show sextant regardless of the
-  primary font — Windows Terminal (`builtinGlyphs`, on by default), kitty, Ghostty.
-- **mintty / Git Bash** renders from the font with limited fallback, so sextant
-  often shows tofu there even though a capable font is installed — because mintty
-  will not reach for it. Keep `halfblock` (it looks great), switch to a terminal
-  above, or set mintty's primary font to one with the block.
+1. **Missing glyphs (tofu).** Rare on a stock system — on Windows the CJK fonts
+   **MingLiU-ExtB** and **Microsoft YaHei** already carry the whole
+   U+1FB00–U+1FB3B block, as do a recent **Cascadia Code** (2404.23 / Nov 2024+)
+   and **GNU Unifont**.
+2. **Wrong width.** The glyphs resolve and render *solid*, but the terminal draws
+   them **double-width** (two cells each, commonly because they fall back to a CJK
+   font). A single probe row looks perfect, yet the scene grid is shredded. A row
+   of solid blocks is **necessary but not sufficient** — you have to check width.
+
+**`mintty` (the default Git Bash terminal) hits case 2: sextant does not work
+there even though the glyphs are present**, because it renders them double-width.
+`--doctor` measures this directly (it queries the cursor position after printing a
+known run) and will tell you outright. The fix for a higher tier on Windows is to
+**run Git Bash inside [Windows Terminal](https://aka.ms/terminal)**, which draws
+these glyphs itself at the correct width; kitty and Ghostty do too. Otherwise keep
+`halfblock` — it is the intended target and looks great.
 
 Note the frames in `docs/frames/` are painted by this project's own rasterizer,
-not by a terminal, so they always show sextant no matter what your terminal does;
-`--doctor` shows your reality.
+not by a terminal, so they always show sextant correctly no matter what your
+terminal does — including the width behaviour a terminal would get wrong. They
+show intent; `--doctor` and an actual frame show your reality.
 
 ## Themes and row budget
 

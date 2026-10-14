@@ -64,12 +64,15 @@ for a change that claims a surface). Run `greyscale.mjs` and `sprites.mjs`
 Every image under `docs/frames/` — the baselines, the review montage, every
 `sextant` frame — is produced by this project's own rasterizer
 (`harness/raster-frame.mjs` maps each glyph to its subpixel mask and paints the
-pixels). **No terminal is involved.** So these images prove what the renderer
-*intends*, not what any given terminal will *display*: a `sextant` frame looks
-perfect here even though, on a terminal that cannot draw the Legacy Computing
-glyphs (or will not fall back to a font that has them, as mintty often will not —
-the glyphs commonly exist on the system but go unused), the same scene renders as
-a wall of tofu boxes. Treat the montage as the art spec and
-`node src/statusline.mjs --doctor` as the check of what a real terminal shows.
-This is also why the shipped default tier is `halfblock` (see the README "Glyph
-tiers and fonts" section).
+pixels). **No terminal is involved**, and crucially the rasterizer paints every
+glyph in a fixed-size cell — it cannot model what a real terminal does with glyph
+*width*. So these images prove what the renderer *intends*, not what any given
+terminal will *display*. A `sextant` frame looks perfect here even though, in
+mintty, the same scene is broken: the Legacy Computing glyphs are present and
+render solid, but mintty draws them **double-width** (two cells each, from a CJK
+fallback font), so the grid shreds. Our rasterizer gives every glyph one cell and
+can never show that. Treat the montage as the art spec, and
+`node src/statusline.mjs --doctor` (which measures real glyph width via CSI 6n)
+plus an actual terminal frame as the check of what ships. This is why the default
+tier is `halfblock` and the art is tuned there — see the README "Glyph tiers and
+fonts" section.

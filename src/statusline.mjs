@@ -20,7 +20,7 @@ import { clamp, hash32 } from './util/rng.mjs';
 // the module. Must come before the stdin/watchdog bootstrap below.
 if (process.argv.includes('--doctor') || process.argv.includes('--fonts')) {
   const { runDoctor } = await import('./doctor.mjs');
-  runDoctor(process.env);
+  await runDoctor(process.env);
   process.exit(0);
 }
 
