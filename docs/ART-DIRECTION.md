@@ -76,3 +76,33 @@ can never show that. Treat the montage as the art spec, and
 plus an actual terminal frame as the check of what ships. This is why the default
 tier is `halfblock` and the art is tuned there — see the README "Glyph tiers and
 fonts" section.
+
+## Halfblock — the default tier
+
+Halfblock (1x2) is what ships by default and what most people run, so the art is
+tuned for it; sextant (2x3) is a bonus on terminals that draw it at single width.
+Critique of the halfblock review montage (`node harness/montage-halfblock.mjs`,
+rows 14/18/20, themes), rule by rule:
+
+- **Survive cleanly at 1x2:** value ladder (5) reads instantly across augusta /
+  links / desert; particles confined to the rough (4); the HUD (9) with its
+  theme-tuned accent; the tree clumps as a two-tone mass (3); the raked camera
+  and minimap (2).
+- **Survive but soften** (inherent to half the vertical resolution, already
+  handled as far as the tier allows, not bugs): outlines (1) stay crisp on the
+  golfer and green but the tree-mass edge is coarse; mowing stripes (6) are
+  deliberately low-contrast and read as gentle banding rather than crisp rows;
+  the green collar ring and slope chevron (7) sit near the resolution floor; the
+  1-cell drop shadow (8) is chunky; the water rim/deep gradation quantizes toward
+  a near-solid band.
+- **The one real degradation — row budget, not tier:** at `CCGOLF_ROWS=14` (the
+  minimum) the camera crops tighter and the far treeline is reduced to a thin
+  edge. At 18/20 and the default (which scales with terminal height, usually
+  ≥16) the full treeline shows. This is a composition tradeoff of the smallest
+  height, not a halfblock defect — a tree-size floor was tried and verified to be
+  a no-op against it (the canopy grows off the top edge, so size is not the
+  lever), and the camera was deliberately left unchanged rather than re-framed
+  for the 14-row edge case.
+
+Net: all nine rules hold at the default and at 18/20; the softening is the
+expected cost of 1x2, and nothing was changed for its own sake.
