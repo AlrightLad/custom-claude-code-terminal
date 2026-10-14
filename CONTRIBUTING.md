@@ -143,3 +143,45 @@ gameplay screenshots, no fonts, no audio. Reference material stays local and
 git-ignored (see `.gitignore`). The completion sound is fetched locally per
 `assets/sound/fetch.md`, never bundled. Keep everything you add your own work or
 compatibly licensed, and keep it Windows/Node-18-friendly with zero dependencies.
+
+## Release checklist (before tagging)
+
+Run all of this from a clean working tree; everything is plain Node/bash, no deps.
+
+1. **Gates:**
+
+        node harness/greyscale.mjs        # value ladder, every theme
+        node harness/visual-diff.mjs      # canonical scenes vs baselines (expect 0%)
+        node harness/sprites.mjs          # sprite silhouettes
+        node harness/scale-check.mjs      # golfer/green proportion (200 frames, 0 failures)
+        node harness/idle-check.mjs       # idle state machine (0 failures)
+
+2. **Install round-trip** (sandboxed; never touches your real `~/.claude`):
+
+        bash harness/verify-install.sh --self-test   # 0 failures, incl. the self-test
+
+3. **Glyph/width doctor** — run in your terminal and read it:
+
+        node src/statusline.mjs --doctor
+
+4. **Clean-checkout walkthrough** — do exactly what the README says, from scratch:
+
+        tmp=$(mktemp -d); git clone . "$tmp/cc"; cd "$tmp/cc"
+        node src/demo.mjs --seconds 6        # renders a hole
+        node src/statusline.mjs --doctor      # runs
+        HOME=$(mktemp -d) bash install/install.sh && HOME=... bash install/uninstall.sh
+        # then: cd back, rm -rf "$tmp"
+
+5. **Third-party content check** — a public MIT repo must ship nothing third-party:
+
+        git ls-files | grep -iE '\.(ttf|otf|woff2?|mp3|wav|ogg|m4a|jpe?g)$'   # expect: nothing
+        git log --all --diff-filter=A --name-only --pretty=format: | sort -u \
+          | grep -iE '\.(ttf|otf|woff2?|mp3|wav|ogg|jpe?g)$'                  # history too: nothing
+        test -f LICENSE && head -1 LICENSE                                    # MIT present
+
+   Every tracked image must be our own rasterizer output under `docs/frames/`.
+   Reference material and sounds stay local and git-ignored.
+
+6. **Tag** once all of the above is green:
+
+        git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z

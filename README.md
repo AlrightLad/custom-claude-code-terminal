@@ -11,8 +11,9 @@ session id and the real calendar.
 Everything renders with half-block / sextant cell art in 24-bit colour, so it
 works in any modern terminal with zero dependencies beyond Node 18+.
 
-![tee shot](docs/frames/scene-tee-shot.png)
-![approach to the green](docs/frames/scene-approach.png)
+![a procedurally generated hole playing itself in the Claude Code status line, at the default half-block tier](docs/frames/demo-halfblock.gif)
+
+*A hole playing itself at the default `halfblock` tier — what you see out of the box. Recorded with `node src/demo.mjs`.*
 
 ## Quick start
 

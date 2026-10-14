@@ -239,15 +239,28 @@ sextant code points through untouched):
 |---|---|---|---|
 | halfblock | U+2580 U+2584 U+2588 | solid | solid |
 | quadrant | U+2596..U+259F | solid | solid |
-| sextant | U+1FB00..U+1FB3B | hollow boxes (font lacks them) | solid (built-in rasterizer) |
+| sextant | U+1FB00..U+1FB3B | double-width or tofu — unreliable, measure it | solid (built-in rasterizer) |
 | octant | U+1CD00..U+1CDE5 | hollow boxes | solid |
 
 Box drawing, the arrow set U+2190..U+2199 and the lower-block bar glyphs
-U+2581..U+2588 render in both. Consequence: the renderer auto-selects
-`sextant` when `WT_SESSION` is present and `halfblock` otherwise, and
-`CCGOLF_GLYPHS=quadrant` is the right setting for mintty users who want the
-extra horizontal resolution. The brief's premise that the status line could
-not carry these glyphs was not the problem; fonts are.
+U+2581..U+2588 render in both.
+
+**Consequence (revised).** The renderer never auto-selects sextant — `halfblock`
+is the only default and sextant/quadrant are opt-in — because none of this is
+detectable from a status line. The earlier conclusion here ("fonts are the
+problem") was too simple. In mintty the sextant glyphs do appear (not tofu) yet
+render **double-width** and shred the grid; meanwhile Windows' own font API reports
+no installed face carrying U+1FB00 at all, and three hand-rolled font-file scans
+disagreed with each other. So font-file inspection is not a reliable predictor;
+`--doctor` measures the real width in the terminal (CSI 6n) instead.
+
+**Hypothesis (not verified; not worth chasing).** Windows' DirectWrite font-link
+fallback can source a glyph from a font the per-face enumeration API does not list,
+so "no enumerated font has U+1FB00" and "the terminal draws U+1FB00" are both true
+at once — the glyph comes from the fallback chain, not a face the scan can see, and
+a CJK-metric fallback font is the natural source of the two-cell advance. This
+changes nothing: the shipped rule is to measure in the terminal, never predict from
+font files. Open thread closed as explained, not worth chasing.
 
 ## F.5 — spinner verbs cannot follow the sim
 
