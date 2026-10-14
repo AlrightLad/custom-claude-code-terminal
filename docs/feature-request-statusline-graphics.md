@@ -81,3 +81,7 @@ only has to fence the region (save/restore cursor, clip scroll).
 Half-block / sextant cell art in 24-bit colour. It works in every terminal and
 needs nothing new; this request only raises the ceiling for terminals that
 speak Sixel or the Kitty protocol, behind an explicit opt-in.
+
+---
+
+**Filed:** https://github.com/anthropics/claude-code/issues/101955
