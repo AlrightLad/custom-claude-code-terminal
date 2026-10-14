@@ -1,6 +1,6 @@
 # Draft feature request (NOT filed) — status line escape-sequence passthrough
 
-Status: draft for review. Do not file without the maintainer's go-ahead.
+Status: FILED to github.com/anthropics/claude-code (issue link appended at bottom).
 Target: github.com/anthropics/claude-code
 
 ---
@@ -28,13 +28,32 @@ OSC set-title by reading the window title, DCS/APC by screenshot):
 | C1 8-bit controls | `0x9b`, `0x90` | No (stripped) |
 
 Root cause: the host re-renders captured output as cells by design, so only
-text, SGR colour and OSC 8 survive. **Consequence:** a status line can never
-show a bitmap. DCS (Sixel) and APC (the Kitty protocol) are the only ways to
-put pixels in a terminal and both are dropped, so the ceiling is two colours
-per character cell. This is a sound default — it stops a misbehaving script
-from corrupting the UI — but it also rules out pixel-art status lines,
-sparkline/graph widgets, small inline charts, and progress visualizers, even
-on terminals that could render them.
+text, SGR colour and OSC 8 survive **through stdout**. **Consequence:** a status
+line cannot show a bitmap *through its stdout*. DCS (Sixel) and APC (the Kitty
+protocol) are the only ways to put pixels in a terminal and both are dropped
+there, so the stdout ceiling is two colours per character cell. This is a sound
+default — it stops a misbehaving script from corrupting the UI — but it also
+rules out pixel-art status lines, sparkline/graph widgets, small inline charts,
+and progress visualizers, even on terminals that could render them.
+
+## Pixels are already reachable out-of-band — which is the real argument
+
+A status-line process can bypass stdout entirely and write a pixel protocol
+straight to the terminal device. This is not hypothetical:
+- **POSIX:** `andywxy1/claude-pet` finds the terminal device by walking the
+  process tree (`ps -o tty=`) and opening `/dev/<tty>`, then writes Kitty
+  graphics there. Works today.
+- **Windows:** the same idea works through `CONOUT$` (the `/dev/tty` analogue).
+  Demonstrated in WezTerm: a status-line-style process (stdout redirected) writes
+  a **Sixel** and a **Kitty** image via `CONOUT$` and the terminal renders it —
+  real pixel art, zero dependencies. Frames and the full method are in the demo
+  repo below.
+
+So the ceiling is already broken; people just have to go *around* Claude Code to
+do it. That bypass races the TUI's repaints, has no way to reserve space or
+coordinate with the host, and can corrupt the display. **That is exactly why a
+sanctioned, opt-in region is worth adding:** it turns a fragile hack that projects
+are already shipping into a safe, first-class contract.
 
 ## Proposal: an opt-in passthrough region
 
