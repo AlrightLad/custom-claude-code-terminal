@@ -7,7 +7,7 @@
 //   node src/demo.mjs                    # augusta, auto glyph tier, 2 fps, ~70 s
 //   node src/demo.mjs --theme links --glyphs quadrant --fps 3 --seconds 40
 //   node src/demo.mjs --record docs/demo-frames   # also writes NNNN.txt frames for harness/gif.mjs
-//   node src/demo.mjs --seed 7           # a different hole
+//   node src/demo.mjs --season winter --seed 7   # a different hole, in winter
 //
 // Press Ctrl-C to stop; the screen is restored.
 import { execFileSync } from 'node:child_process';
@@ -21,6 +21,7 @@ const fps = Math.max(1, Math.min(10, Number(opt('--fps', 2))));
 const seconds = Number(opt('--seconds', 70));
 const theme = opt('--theme', process.env.CCGOLF_THEME || 'augusta');
 const glyphs = opt('--glyphs', process.env.CCGOLF_GLYPHS || '');
+const season = opt('--season', process.env.CCGOLF_SEASON || '');
 const seed = opt('--seed', '1');
 const record = opt('--record', '');
 const colsArg = Number(opt('--cols', 0));
@@ -57,6 +58,7 @@ function frame(mode) {
   const input = JSON.stringify({ session_id: sid, model: { display_name: 'Demo' } });
   const env = { ...process.env, CCGOLF_HOME: home, CCGOLF_MODE: mode, CCGOLF_NOW: String(now), COLUMNS: String(cols), LINES: String(lines), CCGOLF_THEME: theme };
   if (glyphs) env.CCGOLF_GLYPHS = glyphs;
+  if (season) env.CCGOLF_SEASON = season;
   return execFileSync('node', [entryPath], { input, encoding: 'utf8', env });
 }
 

@@ -16,12 +16,13 @@ works in any modern terminal with zero dependencies beyond Node 18+.
 
 ## Quick start
 
-    git clone <this repo> C:/Projects/Custom-Claude-Code-Terminal
-    cd C:/Projects/Custom-Claude-Code-Terminal
+    git clone <REPO-URL> custom-claude-code-terminal
+    cd custom-claude-code-terminal
     bash install/install.sh
 
-Settings hot-reload, so the golfer appears within a second or two; no restart
-needed. `bash install/uninstall.sh` reverts everything. The installer edits
+Clone it anywhere — the installer records whatever path you put it in. (Replace
+`<REPO-URL>` with the repository's clone URL.) Settings hot-reload, so the golfer
+appears within a second or two; no restart needed. `bash install/uninstall.sh` reverts everything. The installer edits
 `~/.claude/settings.json`: the `statusLine` command, the work/idle hooks, the
 subagent hooks, and the golf spinner verbs. It backs the file up first.
 
@@ -186,9 +187,10 @@ default scales with your terminal height.
 
 ## Try it without Claude Code
 
-    node src/demo.mjs                       # plays a scripted hole in your terminal
-    node src/demo.mjs --theme links --glyphs sextant --fps 3 --seconds 40
+    node src/demo.mjs                       # plays a scripted hole (halfblock, the default)
+    node src/demo.mjs --theme links --fps 3 --seconds 40
     node src/demo.mjs --season winter --seed 7
+    node src/demo.mjs --glyphs sextant      # only if --doctor says your terminal supports it
 
 ## Customization
 
